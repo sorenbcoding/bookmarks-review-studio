@@ -1,15 +1,34 @@
 {
-  "name": "bookmarks-review",
-  "displayName": "Bookmarks Review",
-  "description": "Rich review notes for UiPath Studio bookmarks: formatting and inline screenshots, stored in Git next to the project.",
+  "name": "sorenb-studio-bookmarks-review",
+  "displayName": "Bookmarks Review for UiPath Studio",
+  "description": "Adds review notes with formatted text and inline screenshots to UiPath Studio bookmarks, stored in the project's Git repo.",
   "version": "0.2.0",
-  "publisher": "bookmarks-review",
+  "publisher": "sorenbcoding",
   "private": true,
-  "license": "UNLICENSED",
-  "engines": {
-    "vscode": "^1.75.0"
+  "license": "MIT",
+  "author": "Søren Schytz Birk",
+  "homepage": "https://github.com/sorenbcoding/bookmarks-review-studio",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sorenbcoding/bookmarks-review-studio"
   },
-  "categories": ["Other"],
+  "bugs": {
+    "url": "https://github.com/sorenbcoding/bookmarks-review-studio/issues"
+  },
+  "icon": "branding/bookmarks-review-studio-light-128.png",
+  "engines": {
+    "vscode": "^1.95.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "uipath",
+    "studio",
+    "bookmarks",
+    "code review",
+    "review notes"
+  ],
   "main": "./src/extension.js",
   "activationEvents": [
     "workspaceContains:project.json",
@@ -18,19 +37,27 @@
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "bookmarksReview", "title": "Bookmarks Review", "icon": "media/icon.svg" }
+        {
+          "id": "bookmarksReview",
+          "title": "Bookmarks Review",
+          "icon": "media/icon.svg"
+        }
       ]
     },
     "views": {
       "bookmarksReview": [
-        { "type": "webview", "id": "bookmarksReview.view", "name": "Review notes" }
+        {
+          "type": "webview",
+          "id": "bookmarksReview.view",
+          "name": "Review notes"
+        }
       ]
     }
   },
   "scripts": {
-    "build": "esbuild webview/main.js --bundle --minify --format=iife --target=es2020 --outfile=media/main.js",
+    "build": "esbuild webview/main.js --bundle --minify --format=iife --target=es2020 --outfile=dist/webview.js",
     "test": "node --test test/",
-    "package": "npm test && npm run build && npx --yes @vscode/vsce package --skip-license --allow-missing-repository"
+    "package": "npm test && npm run build && npx --yes @vscode/vsce package"
   },
   "devDependencies": {
     "@toast-ui/editor": "3.2.2",
