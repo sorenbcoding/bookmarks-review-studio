@@ -39,7 +39,12 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
 - **Bookmark list.** Every bookmark appears, grouped by workflow, with its note status: No note, Open, Resolved or Won't fix. Disabled bookmarks are dimmed.
 - **Follows Studio.** The workflow in front in Studio is listed first and marked *Open in Studio*. This includes a jump made by Focus in the Markers panel. **This workflow only** hides the other workflows.
 - **Show in Studio** (on a workflow, or at the top of a note) brings that workflow to the front in Studio.
-- **Notes without a bookmark** lists notes whose bookmark was deleted. Add a bookmark on the same activity again to re-attach the note, or delete the note.
+- **Notes without a bookmark** lists notes whose bookmark was deleted, for example by a developer who fixed the point.
+  - To re-attach a note, add a bookmark on the same activity again.
+  - To delete one note, open it and click **Delete note**. **Delete all** deletes every note in the list.
+  - With **This workflow only** on, only that workflow's notes are listed.
+  - **Hide** hides them, and **Show** brings them back. The note files are kept, so they still re-attach. This is the setting `bookmarksReview.hideNotesWithoutBookmark`, default off.
+- **Deleting** a note or a reply asks for confirmation in the panel.
 
 ### Note view
 - **Read view.** An existing note opens read-only, rendered as formatted text.
