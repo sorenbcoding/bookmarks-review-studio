@@ -343,3 +343,37 @@ test('wrap up: Studio bookmarks are untouched unless removeBookmarksOnWrapUp is 
   const archived = JSON.parse(unzip(fs.readFileSync(done.file))['studio-bookmarks.json'].toString());
   assert.equal(Object.values(archived.Value).flat().length, 3, 'the archive has all bookmarks from before');
 });
+
+test('settings: Delete all notes keeps Studio bookmarks; with bookmarks it clears them too', async () => {
+  const t = await setup();
+  const other = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const bookmarksFile = path.join(t.root, '.project', 'bookmarks.json');
+  const before = fs.readFileSync(bookmarksFile);
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `A ![s](${shot})`, status: 'open' });
+  await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
+  await t.send({ type: 'save', bookmarkId: other, noteId: other, body: 'B', status: 'resolved' });
+
+  await t.send({ type: 'deleteAll', withBookmarks: false });
+  assert.deepEqual(t.last('allDeleted'), { type: 'allDeleted', notes: 2, bookmarks: 0, withBookmarks: false });
+  for (const dir of ['notes', 'replies', 'assets']) {
+    const left = fs.existsSync(t.file(dir)) ? fs.readdirSync(t.file(dir)) : [];
+    assert.deepEqual(left, [], `.review/${dir} is empty`);
+  }
+  assert.ok(fs.readFileSync(bookmarksFile).equals(before), 'bookmarks.json untouched');
+
+  await t.send({ type: 'save', bookmarkId: other, noteId: other, body: 'Again', status: 'open' });
+  await t.send({ type: 'deleteAll', withBookmarks: true });
+  assert.deepEqual(t.last('allDeleted'), { type: 'allDeleted', notes: 1, bookmarks: 3, withBookmarks: true });
+  assert.deepEqual(JSON.parse(fs.readFileSync(bookmarksFile, 'utf8')).Value, {});
+  assert.equal(t.last('state').workflows.length, 0);
+});
+
+test('settings: the Settings view gets and changes both settings', async () => {
+  const t = await setup();
+  await t.send({ type: 'settingsInfo' });
+  assert.deepEqual(t.last('settingsInfo'), { type: 'settingsInfo', hideOrphans: false, removeBookmarks: false });
+  await t.send({ type: 'setRemoveBookmarks', value: true });
+  await t.send({ type: 'setHideOrphans', value: true });
+  assert.deepEqual(t.last('settingsInfo'), { type: 'settingsInfo', hideOrphans: true, removeBookmarks: true });
+});
