@@ -1,0 +1,45 @@
+body {
+  font-family: var(--vscode-font-family, "Segoe UI", sans-serif);
+  font-size: var(--vscode-font-size, 13px);
+  color: var(--vscode-foreground, #222);
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background, #fff));
+  padding: 0 12px 16px;
+}
+h2 { font-size: 1.05em; margin: 1.1em 0 0.4em; }
+.muted { color: var(--vscode-descriptionForeground, #666); font-size: 0.9em; margin: 0.2em 0 0.5em; }
+label { display: block; margin: 6px 0; font-size: 0.9em; }
+select, input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 2px;
+  padding: 3px 4px;
+  font: inherit;
+  color: var(--vscode-input-foreground, #222);
+  background: var(--vscode-input-background, #fff);
+  border: 1px solid var(--vscode-input-border, #bbb);
+}
+.row { display: flex; gap: 6px; }
+.row input { margin: 0; }
+.buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+button {
+  padding: 4px 10px;
+  font: inherit;
+  color: var(--vscode-button-foreground, #fff);
+  background: var(--vscode-button-background, #0078d4);
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+button:hover { background: var(--vscode-button-hoverBackground, #005fa3); }
+#run { margin-top: 6px; }
+pre#log {
+  max-height: 420px;
+  overflow: auto;
+  padding: 6px;
+  font-family: var(--vscode-editor-font-family, Consolas, monospace);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  background: var(--vscode-textCodeBlock-background, #f3f3f3);
+}

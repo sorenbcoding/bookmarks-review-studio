@@ -1,0 +1,32 @@
+{
+  "name": "bookmarks-review-probe2",
+  "displayName": "Bookmarks Review – Probe 2 (navigation)",
+  "description": "Phase 0 probe 2: can an extension see which workflow/activity is focused in Studio, and can it open a workflow or activity?",
+  "version": "0.0.3",
+  "publisher": "bookmarks-review",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "bookmarksProbe2", "title": "Navigation Probe", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "bookmarksProbe2": [
+        { "type": "webview", "id": "bookmarksProbe2.view", "name": "Navigation probe" }
+      ]
+    }
+  },
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package --skip-license --allow-missing-repository"
+  }
+}
