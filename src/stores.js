@@ -246,7 +246,7 @@ class ReviewStore {
 
   /** Deletes screenshots of a note that neither the note body nor any reply still references. */
   /**
-   * Every file that belongs to a note, keyed like listFiles(): notes/<id>.md, replies/<id>/…, assets/<id>/….
+   * Every file that belongs to a note (its note file, replies and screenshots), keyed as in listFiles().
    * @returns {Promise<Map<string, Buffer>>}
    */
   async noteFiles(noteId) {
