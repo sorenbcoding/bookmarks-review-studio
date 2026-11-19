@@ -4,11 +4,15 @@ const vscode = require('vscode');
 const path = require('path');
 const { BookmarkStore, ReviewStore } = require('./stores');
 const { reconcile } = require('./core/reconcile');
-const { STATUSES, isValidId, countImages, excerpt } = require('./core/noteFile');
+const { STATUSES, isValidId, isValidReplyId, newReplyId, countImages, excerpt } = require('./core/noteFile');
 const { authorName } = require('./git');
 
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|bmp);base64,([A-Za-z0-9+/=]+)$/;
+const IMAGE_FILE = /^[\w.-]+\.(png|jpg|gif|webp|bmp)$/i;
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+// Relative path from a file to .review/assets/: notes live one level down, replies two.
+const NOTE_ASSETS = '../assets/';
+const REPLY_ASSETS = '../../assets/';
 
 /** @type {vscode.OutputChannel} */
 let log;
@@ -128,14 +132,22 @@ class ReviewController {
       this.attached = attached;
       this.orphans = orphans;
       this.notesById = new Map(notes.map((n) => [n.meta.noteId, n]));
+      this.replyCounts = await this.reviewStore.countReplies();
       this.postState();
     });
   }
 
+  /** A note or reply file changed. Someone else's change (e.g. git pull) makes an open note reload. */
   async onNoteFileChanged(uri) {
-    const noteId = path.basename(uri.fsPath, '.md');
-    const note = await this.reviewStore.readNote(noteId);
-    const ownWrite = note && this.reviewStore.lastWritten.get(noteId) === note.text;
+    const parts = uri.fsPath.split(/[\\/]/);
+    const noteId = parts.at(-2) === 'notes' ? path.basename(uri.fsPath, '.md') : parts.at(-2);
+    let text = null;
+    try {
+      text = Buffer.from(await vscode.workspace.fs.readFile(uri)).toString('utf8');
+    } catch {
+      // deleted
+    }
+    const ownWrite = text !== null && this.reviewStore.isOwnWrite(uri, text);
     await this.refresh();
     if (!ownWrite) this.post({ type: 'noteChangedOnDisk', noteId });
   }
@@ -166,12 +178,12 @@ class ReviewController {
     return this.view ? this.view.webview.asWebviewUri(this.reviewStore.reviewDir).toString() : '';
   }
 
-  toWebviewBody(body) {
-    return this.assetBase ? body.split('](../assets/').join(`](${this.assetBase}/assets/`) : body;
+  toWebviewBody(body, prefix = NOTE_ASSETS) {
+    return this.assetBase ? body.split(`](${prefix}`).join(`](${this.assetBase}/assets/`) : body;
   }
 
-  fromWebviewBody(body) {
-    return this.assetBase ? body.split(`${this.assetBase}/assets/`).join('../assets/') : body;
+  fromWebviewBody(body, prefix = NOTE_ASSETS) {
+    return this.assetBase ? body.split(`${this.assetBase}/assets/`).join(prefix) : body;
   }
 
   postState() {
@@ -182,6 +194,7 @@ class ReviewController {
         author: note.meta.author,
         updated: note.meta.updated,
         imageCount: countImages(note.body),
+        replyCount: this.replyCounts?.get(note.meta.noteId) ?? 0,
         excerpt: excerpt(note.body),
       };
     const groups = new Map();
@@ -212,10 +225,26 @@ class ReviewController {
         this.postState();
         break;
       case 'open':
-        await this.postNote(msg.bookmarkId, msg.noteId);
+        // Queued, so a note opened right after a save shows the saved version.
+        await this.enqueue(() => this.postNote(msg.bookmarkId, msg.noteId));
         break;
       case 'save':
         await this.enqueue(() => this.saveNote(msg));
+        break;
+      case 'setStatus':
+        await this.enqueue(() => this.setStatus(msg));
+        break;
+      case 'saveReply':
+        await this.enqueue(() => this.saveReply(msg));
+        break;
+      case 'deleteReply':
+        await this.deleteReply(msg);
+        break;
+      case 'discardDraft':
+        if (isValidId(msg.noteId)) await this.enqueue(() => this.cleanupAssets(msg.noteId));
+        break;
+      case 'openImage':
+        await this.openImage(msg.src);
         break;
       case 'pasteImage':
         await this.enqueue(() => this.saveImage(msg));
@@ -234,6 +263,7 @@ class ReviewController {
     const known = bookmark ? this.attached.get(bookmark.id) : this.notesById.get(noteId);
     const note = known ? await this.reviewStore.readNote(known.meta.noteId) : null;
     if (!bookmark && !note) return this.postState();
+    const replies = note ? await this.reviewStore.loadReplies(note.meta.noteId) : [];
     this.post({
       type: 'note',
       bookmark: bookmark ?? null,
@@ -241,7 +271,23 @@ class ReviewController {
       meta: note?.meta ?? null,
       body: this.toWebviewBody(note?.body ?? ''),
       orphan: !bookmark,
+      me: this.author,
+      replies: replies.map((r) => ({
+        id: r.id,
+        author: r.meta.author,
+        created: r.meta.created,
+        updated: r.meta.updated,
+        body: this.toWebviewBody(r.body, REPLY_ASSETS),
+        mine: r.meta.author === this.author,
+      })),
     });
+  }
+
+  /** Deletes screenshots of a note that neither the note nor its replies reference any more. */
+  async cleanupAssets(noteId) {
+    const note = await this.reviewStore.readNote(noteId);
+    const replies = await this.reviewStore.loadReplies(noteId);
+    await this.reviewStore.cleanupAssets(noteId, [note?.body ?? '', ...replies.map((r) => r.body)]);
   }
 
   async saveNote({ bookmarkId, noteId, body, status }) {
@@ -250,11 +296,12 @@ class ReviewController {
     const newStatus = STATUSES.includes(status) ? status : 'open';
     const bookmark = this.bookmarks.find((b) => b.id === bookmarkId);
     const existing = await this.reviewStore.readNote(noteId);
+    const hasReplies = existing ? (await this.reviewStore.loadReplies(noteId)).length > 0 : false;
 
-    // An empty, open note on a live bookmark is the same as no note.
-    if (!markdown && newStatus === 'open' && (bookmark || !existing)) {
+    // An empty, open note on a live bookmark, without replies, is the same as no note.
+    if (!markdown && newStatus === 'open' && !hasReplies && (bookmark || !existing)) {
       if (existing) await this.reviewStore.deleteNote(noteId);
-      else await this.reviewStore.cleanupAssets(noteId, '');
+      else await this.reviewStore.cleanupAssets(noteId, []);
       this.post({ type: 'saved', noteId, meta: null, removed: Boolean(existing) });
       return this.refreshLater();
     }
@@ -272,9 +319,73 @@ class ReviewController {
     meta.status = newStatus;
     meta.updated = now;
     await this.reviewStore.writeNote(meta, markdown);
-    await this.reviewStore.cleanupAssets(noteId, markdown);
+    await this.cleanupAssets(noteId);
     this.post({ type: 'saved', noteId, meta });
     this.refreshLater();
+  }
+
+  /** Changes only the status (read view: Mark resolved / Reopen / status list). */
+  async setStatus({ noteId, status }) {
+    if (!isValidId(noteId) || !STATUSES.includes(status)) return;
+    const existing = await this.reviewStore.readNote(noteId);
+    if (!existing) return;
+    const meta = { ...existing.meta, status, updated: new Date().toISOString() };
+    await this.reviewStore.writeNote(meta, existing.body);
+    this.post({ type: 'saved', noteId, meta });
+    this.refreshLater();
+  }
+
+  /** Adds a reply (no replyId) or edits/removes one of your own (empty body removes it). */
+  async saveReply({ bookmarkId, noteId, replyId, body }) {
+    if (!isValidId(noteId)) return;
+    if (!(await this.reviewStore.readNote(noteId))) {
+      return this.post({ type: 'replyError', error: 'This note no longer exists — it may have been deleted. Go back to the list and open the bookmark again.' });
+    }
+    const markdown = this.fromWebviewBody(String(body ?? ''), REPLY_ASSETS).trim();
+    const now = new Date().toISOString();
+    if (replyId) {
+      if (!isValidReplyId(replyId)) return;
+      const existing = await this.reviewStore.readReply(noteId, replyId);
+      if (!existing) return this.post({ type: 'replyError', error: 'This reply no longer exists.' });
+      if (existing.meta.author !== this.author) {
+        return this.post({ type: 'replyError', error: `Only ${existing.meta.author} can change this reply. Add your own reply instead.` });
+      }
+      if (markdown) await this.reviewStore.writeReply(noteId, replyId, { ...existing.meta, updated: now }, markdown);
+      else await this.reviewStore.deleteReply(noteId, replyId);
+    } else if (markdown) {
+      await this.reviewStore.writeReply(noteId, newReplyId(), { author: this.author, created: now, updated: now }, markdown);
+    }
+    await this.cleanupAssets(noteId);
+    await this.postNote(bookmarkId, noteId);
+    this.refreshLater();
+  }
+
+  async deleteReply({ bookmarkId, noteId, replyId }) {
+    if (!isValidId(noteId) || !isValidReplyId(replyId)) return;
+    const existing = await this.reviewStore.readReply(noteId, replyId);
+    if (!existing || existing.meta.author !== this.author) return;
+    const choice = await vscode.window.showWarningMessage('Delete this reply and its screenshots?', { modal: true }, 'Delete');
+    if (choice !== 'Delete') return;
+    await this.enqueue(async () => {
+      await this.reviewStore.deleteReply(noteId, replyId);
+      await this.cleanupAssets(noteId);
+      await this.postNote(bookmarkId, noteId);
+    });
+    this.refreshLater();
+  }
+
+  /** Opens a screenshot in the Windows default image viewer. Only files under .review/assets/ are allowed. */
+  async openImage(src) {
+    const base = `${this.assetBase}/assets/`;
+    if (typeof src !== 'string' || !this.assetBase || !src.startsWith(base)) return;
+    const [noteId, file, ...rest] = decodeURIComponent(src.slice(base.length).split(/[?#]/)[0]).split('/');
+    if (rest.length || !isValidId(noteId) || !IMAGE_FILE.test(file ?? '')) return;
+    const uri = vscode.Uri.joinPath(this.reviewStore.assetsDir, noteId, file);
+    const opened = await vscode.env.openExternal(uri);
+    log.appendLine(`Open image ${uri.fsPath}: ${opened ? 'opened' : 'refused by the host'}`);
+    if (!opened) {
+      vscode.window.showWarningMessage(`Could not open the screenshot in the image viewer — the host refused to open files. The file is at ${uri.fsPath}.`);
+    }
   }
 
   /** Refresh after the current queued job finishes (cannot await inside the queue). */
