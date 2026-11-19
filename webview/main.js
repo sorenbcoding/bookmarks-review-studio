@@ -171,7 +171,7 @@ function renderList() {
             label: 'Delete all',
             question: `Delete ${orphans.length === 1 ? 'this note' : `all ${orphans.length} notes`} with replies and screenshots?`,
             yes: 'Delete',
-            onConfirm: () => vscode.postMessage({ type: 'deleteOrphans' }),
+            onConfirm: () => vscode.postMessage({ type: 'deleteOrphans', noteIds: orphans.map((o) => o.noteId) }),
           }))),
       h('p', { class: 'muted small' }, 'Their bookmark was deleted in Studio. Re-add a bookmark on the same activity to re-attach a note, or open a note to delete it.'),
       h('ul', { class: 'rows' }, orphans.map((o) =>
@@ -224,7 +224,13 @@ function renderSettings() {
   const bookmarks = state ? state.workflows.reduce((n, w) => n + w.bookmarks.length, 0) : 0;
   const deleteAll = (withBookmarks) => {
     settingsView.phase = 'deleting';
-    vscode.postMessage({ type: 'deleteAll', withBookmarks });
+    // Only what the confirmation counted is deleted; anything added since stays.
+    vscode.postMessage({
+      type: 'deleteAll',
+      withBookmarks,
+      noteIds: noteSummaries().map((n) => n.noteId),
+      bookmarkIds: withBookmarks && state ? state.workflows.flatMap((w) => w.bookmarks.map((b) => b.id)) : [],
+    });
     renderSettings();
   };
   let actions;
@@ -323,6 +329,9 @@ function renderWrapUp() {
       h('p', {}, r.removed
         ? `Removed ${plural(r.removed, 'note')} from the project${r.kept ? `, kept ${r.kept}` : ''}. Commit the change to .review/ to finish the review in Git.`
         : 'No notes were removed.'),
+      r.changed
+        ? h('p', {}, `Kept ${plural(r.changed, 'note')} that changed during the export, so the archive doesn't hold the current version. Wrap up again to archive and remove them.`)
+        : null,
       r.removedBookmarks
         ? h('p', {}, `Removed ${plural(r.removedBookmarks, 'bookmark')} from Studio. The archive has a copy in studio-bookmarks.json.`)
         : null,

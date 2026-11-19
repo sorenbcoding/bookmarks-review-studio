@@ -46,6 +46,7 @@ async function setup() {
 
   const posted = [];
   let handler;
+  const hooks = { beforeRender: null }; // test hook: runs while the panel "renders" the report
   const webview = {
     cspSource: 'mock',
     options: {},
@@ -57,7 +58,10 @@ async function setup() {
       if (m.type === 'renderReport') {
         const toHtml = (md) => `<p>${md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')}</p>`;
         const html = Object.fromEntries(m.sections.map((sct) => [sct.id, toHtml(sct.markdown)]));
-        setTimeout(() => handler({ type: 'reportRendered', requestId: m.requestId, html }), 0);
+        setTimeout(async () => {
+          if (hooks.beforeRender) await hooks.beforeRender();
+          handler({ type: 'reportRendered', requestId: m.requestId, html });
+        }, 0);
       }
     },
     onDidReceiveMessage: (fn) => (handler = fn),
@@ -70,7 +74,7 @@ async function setup() {
   };
   const last = (type) => posted.filter((m) => m.type === type).at(-1);
   const file = (...p) => path.join(root, '.review', ...p);
-  return { root, controller, posted, send, last, file, globalState };
+  return { root, controller, posted, send, last, file, globalState, hooks };
 }
 
 async function pasteImage(t) {
@@ -237,7 +241,7 @@ test('Delete all removes only the notes without a bookmark', async () => {
   await deleteBookmark(t, other);
   assert.equal(t.last('state').orphans.length, 2);
 
-  await t.send({ type: 'deleteOrphans' });
+  await t.send({ type: 'deleteOrphans', noteIds: t.last('state').orphans.map((o) => o.noteId) });
   assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
   assert.ok(!fs.existsSync(t.file('replies', BOOKMARK)));
   assert.ok(!fs.existsSync(t.file('notes', `${other}.md`)));
@@ -354,7 +358,7 @@ test('settings: Delete all notes keeps Studio bookmarks; with bookmarks it clear
   await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
   await t.send({ type: 'save', bookmarkId: other, noteId: other, body: 'B', status: 'resolved' });
 
-  await t.send({ type: 'deleteAll', withBookmarks: false });
+  await t.send({ type: 'deleteAll', withBookmarks: false, noteIds: [BOOKMARK, other] });
   assert.deepEqual(t.last('allDeleted'), { type: 'allDeleted', notes: 2, bookmarks: 0, withBookmarks: false });
   for (const dir of ['notes', 'replies', 'assets']) {
     const left = fs.existsSync(t.file(dir)) ? fs.readdirSync(t.file(dir)) : [];
@@ -363,7 +367,8 @@ test('settings: Delete all notes keeps Studio bookmarks; with bookmarks it clear
   assert.ok(fs.readFileSync(bookmarksFile).equals(before), 'bookmarks.json untouched');
 
   await t.send({ type: 'save', bookmarkId: other, noteId: other, body: 'Again', status: 'open' });
-  await t.send({ type: 'deleteAll', withBookmarks: true });
+  const allBookmarks = t.last('state').workflows.flatMap((w) => w.bookmarks.map((b) => b.id));
+  await t.send({ type: 'deleteAll', withBookmarks: true, noteIds: [other], bookmarkIds: allBookmarks });
   assert.deepEqual(t.last('allDeleted'), { type: 'allDeleted', notes: 1, bookmarks: 3, withBookmarks: true });
   assert.deepEqual(JSON.parse(fs.readFileSync(bookmarksFile, 'utf8')).Value, {});
   assert.equal(t.last('state').workflows.length, 0);
@@ -376,4 +381,68 @@ test('settings: the Settings view gets and changes both settings', async () => {
   await t.send({ type: 'setRemoveBookmarks', value: true });
   await t.send({ type: 'setHideOrphans', value: true });
   assert.deepEqual(t.last('settingsInfo'), { type: 'settingsInfo', hideOrphans: true, removeBookmarks: true });
+});
+
+test('review fix: Delete all deletes only the notes that were confirmed', async () => {
+  const t = await setup();
+  const other = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const third = 'd52f3772-4097-4d10-b889-001015f31f64';
+  for (const id of [BOOKMARK, other, third]) await t.send({ type: 'save', bookmarkId: id, noteId: id, body: `N ${id}`, status: 'open' });
+  for (const id of [BOOKMARK, other]) await deleteBookmark(t, id);
+  // "This workflow only": the panel confirmed just one of the two orphans.
+  await t.send({ type: 'deleteOrphans', noteIds: [BOOKMARK] });
+  assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
+  assert.ok(fs.existsSync(t.file('notes', `${other}.md`)), 'the orphan that was not shown is kept');
+  // An id that is not an orphan is ignored.
+  await t.send({ type: 'deleteOrphans', noteIds: [third, 'not-a-guid'] });
+  assert.ok(fs.existsSync(t.file('notes', `${third}.md`)));
+
+  // Settings: a note added after the confirmation stays, and only confirmed bookmarks go.
+  await t.send({ type: 'deleteAll', withBookmarks: true, noteIds: [other], bookmarkIds: [third] });
+  assert.deepEqual(t.last('allDeleted'), { type: 'allDeleted', notes: 1, bookmarks: 1, withBookmarks: true });
+  assert.ok(fs.existsSync(t.file('notes', `${third}.md`)), 'unconfirmed note kept');
+  const left = Object.values(JSON.parse(fs.readFileSync(path.join(t.root, '.project', 'bookmarks.json'), 'utf8')).Value).flat();
+  assert.deepEqual(left.map((b) => b.Id), [], 'the other bookmarks were already deleted in Studio');
+});
+
+test('review fix: wrap-up keeps a note that changed during the export', async () => {
+  const t = await setup();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-'));
+  await t.globalState.update('archiveFolder', out);
+  const other = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Resolved one', status: 'resolved' });
+  await t.send({ type: 'save', bookmarkId: other, noteId: other, body: 'Resolved two', status: 'resolved' });
+  // While the report renders, someone changes one note (e.g. git pull).
+  t.hooks.beforeRender = async () => {
+    const f = t.file('notes', `${BOOKMARK}.md`);
+    fs.writeFileSync(f, fs.readFileSync(f, 'utf8').replace('Resolved one', 'Reopened with new findings'));
+  };
+  await t.send({ type: 'exportArchive', remove: 'closed' });
+  const done = t.last('archived');
+  assert.deepEqual([done.removed, done.changed], [1, 1]);
+  assert.match(fs.readFileSync(t.file('notes', `${BOOKMARK}.md`), 'utf8'), /Reopened with new findings/, 'changed note kept');
+  assert.ok(!fs.existsSync(t.file('notes', `${other}.md`)), 'unchanged note removed');
+  const archived = unzip(fs.readFileSync(done.file))[`.review/notes/${BOOKMARK}.md`].toString();
+  assert.match(archived, /Resolved one/, 'the archive holds the version read at export');
+});
+
+test('review fix: an autosave in flight does not delete a just-pasted screenshot', async () => {
+  const t = await setup();
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Text', status: 'open' });
+  const shot = await pasteImage(t);
+  const fileName = shot.split('/').pop();
+  const onDisk = () => fs.existsSync(t.file('assets', BOOKMARK, fileName));
+  // The autosave that was captured before the link was inserted arrives after the image is written.
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Text, typing on', status: 'open' });
+  assert.ok(onDisk(), 'fresh screenshot survives the stale autosave');
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `Text ![s](${shot})`, status: 'open' });
+  assert.ok(onDisk());
+  // Once a saved text has linked it, removing the link removes the file as before.
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Text', status: 'open' });
+  assert.ok(!onDisk(), 'unlinked after being saved: cleaned up');
+
+  // Discarding a draft still removes a fresh screenshot right away.
+  const draftShot = (await pasteImage(t)).split('/').pop();
+  await t.send({ type: 'discardDraft', noteId: BOOKMARK });
+  assert.ok(!fs.existsSync(t.file('assets', BOOKMARK, draftShot)));
 });
