@@ -1,0 +1,37 @@
+{
+  "name": "bookmarks-review-probe",
+  "displayName": "Bookmarks Review – Probe",
+  "description": "Phase 0 probe: tests what a .vsix extension can do inside UiPath Studio (panels, file access, bookmarks.json, screenshot paste).",
+  "version": "0.0.1",
+  "publisher": "bookmarks-review",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "bookmarksProbe.openPanel", "title": "Bookmarks Probe: Open Test Panel" },
+      { "command": "bookmarksProbe.runReport", "title": "Bookmarks Probe: Run Capability Report" },
+      { "command": "bookmarksProbe.showLog", "title": "Bookmarks Probe: Show Log" }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "bookmarksProbe", "title": "Review Probe", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "bookmarksProbe": [
+        { "type": "webview", "id": "bookmarksProbe.view", "name": "Bookmarks" }
+      ]
+    }
+  },
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package --skip-license --allow-missing-repository"
+  }
+}

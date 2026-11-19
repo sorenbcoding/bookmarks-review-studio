@@ -1,0 +1,35 @@
+{
+  "Value": {
+    "Studie+/API/Hent elever via API (Studie+ B2105).xaml": [
+      {
+        "IsEnabled": true,
+        "Annotation": "Test IndiIds.Count bør ændres til aktuelIndiIdArray.Count ved sammenligning med resultater fra API?",
+        "Id": "c7311c1d-903e-4b37-af5e-f02ec9413a1b",
+        "ActivityIdRef": "If_13",
+        "ActivityId": "1.988",
+        "ActivityName": "Matcher antal resultater ikke med antal fra IndiIds?",
+        "IsTransient": false
+      }
+    ],
+    "testSandbox.xaml": [
+      {
+        "IsEnabled": true,
+        "Annotation": "Test in another file",
+        "Id": "cb869369-1453-41dc-8a14-a4c93fb9250f",
+        "ActivityIdRef": "MultipleAssign_1",
+        "ActivityId": "1.28",
+        "ActivityName": "Multiple Assign",
+        "IsTransient": false
+      },
+      {
+        "IsEnabled": true,
+        "Annotation": null,
+        "Id": "d52f3772-4097-4d10-b889-001015f31f64",
+        "ActivityIdRef": "WriteRange_1",
+        "ActivityId": "1.2",
+        "ActivityName": "Write Range Workbook",
+        "IsTransient": false
+      }
+    ]
+  }
+}

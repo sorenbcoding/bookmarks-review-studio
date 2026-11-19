@@ -1,0 +1,204 @@
+{
+  "time": "2026-11-19T09:33:23.986Z",
+  "host": {
+    "appName": "Visual Studio Code",
+    "apiVersion": "1.95.0",
+    "appRoot": "C:\\Users\\ssb\\AppData\\Local\\UiPath\\Studio\\Extensions\\host",
+    "uriScheme": "vscode"
+  },
+  "apis": {
+    "tabGroups": true,
+    "onDidChangeActiveTextEditor": "function",
+    "onDidChangeTextEditorSelection": "function",
+    "onDidChangeWindowState": "function",
+    "activeColorThemeKind": 1
+  },
+  "startup": {
+    "tabs": [
+      {
+        "active": true,
+        "tabs": []
+      }
+    ],
+    "editors": {
+      "active": "Main.xaml",
+      "visible": [
+        "Main.xaml"
+      ],
+      "textDocuments": [
+        "Main.xaml (xml)"
+      ]
+    }
+  },
+  "commands": {
+    "startup": {
+      "totalIncludingInternal": 16,
+      "totalExternal": 6,
+      "external": [
+        "rpaCanvas.openCanvas",
+        "rpaCanvas.previewSide",
+        "rpaCanvas.showMetadataStatus",
+        "setContext",
+        "tenantSwitcher.addPreset",
+        "tenantSwitcher.pickPreset"
+      ],
+      "interesting": [
+        "bookmarksProbe2.view.focus",
+        "rpaCanvas.openCanvas",
+        "rpaCanvas.previewSide",
+        "rpaCanvas.showMetadataStatus",
+        "tenantSwitcher.panel.focus",
+        "uipath.codedWorkflows.describeServices",
+        "uipath.preview.setLayout",
+        "vscode.open",
+        "vscode.openWith",
+        "workbench.action.openSettings"
+      ]
+    },
+    "latestAll": [
+      "bookmarksProbe2.view.focus",
+      "markdown.preview.refresh",
+      "rpaCanvas.openCanvas",
+      "rpaCanvas.previewSide",
+      "rpaCanvas.showMetadataStatus",
+      "setContext",
+      "tenantSwitcher.addPreset",
+      "tenantSwitcher.panel.focus",
+      "tenantSwitcher.pickPreset",
+      "uipath.codedWorkflows.describeServices",
+      "uipath.preview.setLayout",
+      "vscode.diff",
+      "vscode.open",
+      "vscode.openWith",
+      "workbench.action.openSettings",
+      "workbench.action.reloadWindow"
+    ]
+  },
+  "extensions": [
+    {
+      "id": "sorenbcoding.sorenb-studio-tenant-switcher",
+      "version": "0.4.1",
+      "isActive": true,
+      "path": "C:/Users/ssb/AppData/Local/UiPath/Studio/Extensions/sorenbcoding.sorenb-studio-tenant-switcher-0.4.1",
+      "activationEvents": [
+        "onStartupFinished"
+      ],
+      "contributes": {
+        "commands": [
+          {
+            "command": "tenantSwitcher.addPreset",
+            "title": "Add preset",
+            "category": "Tenant Switcher"
+          },
+          {
+            "command": "tenantSwitcher.pickPreset",
+            "title": "Switch tenant…",
+            "category": "Tenant Switcher"
+          }
+        ],
+        "customEditors": [],
+        "languages": [],
+        "menus": {},
+        "submenus": [],
+        "views": [
+          {
+            "id": "tenantSwitcher.panel",
+            "name": "Presets",
+            "containerId": "tenantSwitcher",
+            "type": "webview",
+            "when": null
+          }
+        ],
+        "viewsWelcome": []
+      },
+      "exports": {}
+    },
+    {
+      "id": "uipath.low-code-viewer",
+      "version": "1.0.2",
+      "isActive": true,
+      "path": "C:/Users/ssb/AppData/Local/UiPath/Studio/Extensions/uipath.low-code-viewer-1.0.2",
+      "activationEvents": [
+        "onStartupFinished",
+        "onLanguage:csharp"
+      ],
+      "contributes": {
+        "commands": [
+          {
+            "command": "rpaCanvas.openCanvas",
+            "title": "Open Canvas",
+            "category": "Low-Code Viewer"
+          },
+          {
+            "command": "rpaCanvas.previewSide",
+            "title": "Open Preview to the Side",
+            "category": "Low-Code Viewer"
+          },
+          {
+            "command": "rpaCanvas.showMetadataStatus",
+            "title": "Show Metadata Status",
+            "category": "Low-Code Viewer"
+          }
+        ],
+        "customEditors": [],
+        "languages": [],
+        "menus": {
+          "commandPalette": [
+            {
+              "command": "rpaCanvas.previewSide",
+              "when": "false",
+              "group": null,
+              "submenu": null
+            }
+          ],
+          "editor/title": [
+            {
+              "command": "rpaCanvas.openCanvas",
+              "when": "resourceExtname == .cs",
+              "group": "navigation",
+              "submenu": null
+            }
+          ]
+        },
+        "submenus": [],
+        "views": [
+          {
+            "id": "lowCodeViewer.canvas",
+            "name": "Low-Code Viewer",
+            "containerId": "low-code-viewer",
+            "type": "webview",
+            "when": "lowCodeViewer.showPanel"
+          }
+        ],
+        "viewsWelcome": []
+      },
+      "exports": {}
+    },
+    {
+      "id": "bookmarks-review.bookmarks-review-probe2",
+      "version": "0.0.3",
+      "isActive": false,
+      "path": "C:/Users/ssb/AppData/Local/UiPath/Studio/Extensions/bookmarks-review.bookmarks-review-probe2-0.0.3",
+      "activationEvents": [
+        "onStartupFinished"
+      ],
+      "contributes": {
+        "commands": [],
+        "customEditors": [],
+        "languages": [],
+        "menus": {},
+        "submenus": [],
+        "views": [
+          {
+            "id": "bookmarksProbe2.view",
+            "name": "Navigation probe",
+            "containerId": "bookmarksProbe2",
+            "type": "webview",
+            "when": null
+          }
+        ],
+        "viewsWelcome": []
+      }
+    }
+  ]
+}

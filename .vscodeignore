@@ -1,0 +1,9 @@
+node_modules/**
+webview/**
+test/**
+research/**
+docs/**
+*.vsix
+.gitignore
+.gitattributes
+CLAUDE.md

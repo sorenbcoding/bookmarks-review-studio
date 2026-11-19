@@ -1,0 +1,34 @@
+09:33:23.988 [init] Activated. Host "Visual Studio Code" API 1.95.0. Project C:\Users\ssb\Documents\UiPath\BlankProcess6
+09:33:23.989 [init] API availability {"tabGroups":true,"onDidChangeActiveTextEditor":"function","onDidChangeTextEditorSelection":"function","onDidChangeWindowState":"function","activeColorThemeKind":1}
+09:33:23.989 [init] Tabs at startup [{"active":true,"tabs":[]}]
+09:33:23.989 [init] Editors at startup {"active":"Main.xaml","visible":["Main.xaml"],"textDocuments":["Main.xaml (xml)"]}
+09:33:23.998 [commands] startup: 16 incl. internal, 6 external, 10 interesting
+09:33:24.000 [init] Extensions: 3 ["sorenbcoding.sorenb-studio-tenant-switcher (active: true)","uipath.low-code-viewer (active: true)","bookmarks-review.bookmarks-review-probe2 (active: false)"]
+09:33:26.652 [view] Probe view resolved
+09:34:48.548 [document] Opened "Sequence.xaml (xml)"
+09:34:48.550 [editor] Active text editor {"file":"Sequence.xaml","lineCount":88,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:34:49.293 [editor] Active text editor {"file":"Sequence.xaml","lineCount":88,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:34:50.549 [file] deleted .project/bookmarks.json
+09:34:50.551 [file] created .project/bookmarks.json
+09:34:50.632 [file] changed .project
+09:35:28.465 [jump] RUN A: vscode.open (workflow) → Main.xaml / AddLogFields_1
+09:35:28.514 [editor] Active text editor {"file":"Main.xaml","lineCount":206,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:35:28.515 [jump] OK A. Active editor now: Main.xaml
+09:35:36.585 [MARKER] ===== Switched workflow =====
+09:35:42.014 [editor] Active text editor {"file":"Sequence.xaml","lineCount":88,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:35:43.777 [jump] RUN B: showTextDocument (workflow) → Main.xaml / AddLogFields_1
+09:35:43.778 [jump] OK B. Active editor now: Sequence.xaml
+09:35:43.795 [editor] Active text editor {"file":"Main.xaml","lineCount":206,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:35:51.892 [MARKER] ===== Switched workflow =====
+09:35:53.971 [editor] Active text editor {"file":"Sequence.xaml","lineCount":88,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:35:55.488 [jump] RUN C: showTextDocument + select the activity line → Main.xaml / AddLogFields_1
+09:35:55.489 [jump] IdRef found on line 190 {"lineCount":206}
+09:35:55.490 [jump] OK C. Active editor now: Sequence.xaml
+09:35:55.507 [editor] Active text editor {"file":"Main.xaml","lineCount":206,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:35:58.117 [MARKER] ===== Switched workflow =====
+09:35:59.314 [editor] Active text editor {"file":"Sequence.xaml","lineCount":88,"containsIdRefs":true,"selection":{"line":0,"ch":0}}
+09:36:00.863 [jump] RUN D: select the activity line in the open editor → Main.xaml / AddLogFields_1
+09:36:00.863 [jump] IdRef found on line 190 {"lineCount":206}
+09:36:00.864 [jump] OK D. Active editor now: Sequence.xaml
+09:36:00.876 [editor] Active text editor {"file":"Main.xaml","lineCount":206,"containsIdRefs":true,"selection":{"line":189,"ch":149}}
+09:36:03.797 [MARKER] ===== Switched workflow =====
