@@ -1,0 +1,29 @@
+# Changelog
+
+All notable changes to Bookmarks Review for UiPath Studio are documented here.
+The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses [Semantic Versioning](https://semver.org/).
+
+## [Unreleased]
+
+### Changed
+- The extension is now `sorenbcoding.sorenb-studio-bookmarks-review`, displayed as *Bookmarks Review for UiPath Studio*, with the SorenB product logo. Uninstall the earlier `bookmarks-review.bookmarks-review` before installing it. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
+- The panel uses the SorenB brand tokens. The violet accent marks the current workflow, links and focus. Status badges are outlined in the brand status colours, so they keep their contrast in dark themes. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
+- The activity bar icon is made of filled shapes, because Studio fills icon geometry. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
+
+## [0.2.0] - 2026-11-19
+
+### Added
+- The panel follows the workflow in front in Studio, including a jump made by Focus in the Markers panel. That workflow is listed first and marked *Open in Studio*.
+- **This workflow only** hides the other workflows.
+- **Show in Studio** on a workflow, or at the top of a note, brings that workflow to the front in Studio.
+
+## [0.1.0] - 2026-11-17
+
+### Added
+- A Bookmarks Review panel that lists Studio's bookmarks from `.project/bookmarks.json`, grouped by workflow, and updates live.
+- A review note for each bookmark:
+  - a WYSIWYG editor that saves Markdown;
+  - screenshots pasted inline, saved to `.review/assets/`;
+  - a status: Open, Resolved or Won't fix;
+  - the author taken from `git config user.name`.
+- Notes re-attach automatically when a bookmark is deleted and added again on the same activity. Notes without a bookmark are kept and can be deleted by hand.
