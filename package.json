@@ -2,7 +2,7 @@
   "name": "sorenb-studio-bookmarks-review",
   "displayName": "Bookmarks Review for UiPath Studio",
   "description": "Adds review notes with formatted text and inline screenshots to UiPath Studio bookmarks, stored in the project's Git repo.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "sorenbcoding",
   "private": true,
   "license": "MIT",
