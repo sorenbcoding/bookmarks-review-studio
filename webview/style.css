@@ -112,8 +112,7 @@ ul.rows.current .row { border-left-color: var(--accent); }
 
 /* ---- note */
 .topbar { display: flex; justify-content: space-between; align-items: center; gap: var(--sb-space-2); }
-.back { padding: var(--sb-space-1) 0; color: var(--accent); }
-.back:hover { text-decoration: underline; }
+.back { white-space: nowrap; }
 .pathbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--sb-space-2); }
 .path { word-break: break-all; }
 

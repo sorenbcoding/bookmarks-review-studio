@@ -14,6 +14,13 @@ Module._resolveFilename = function (request, ...rest) {
 };
 const vscode = require('vscode');
 const { activate } = require('../src/extension');
+const opener = require('../src/openFile');
+
+// Never start a real image viewer from the tests.
+opener.openWithDefaultApp = async (uri) => {
+  vscode.mock.opened.push(uri);
+  return { ok: true, via: 'test' };
+};
 
 const BOOKMARK = 'c7311c1d-903e-4b37-af5e-f02ec9413a1b';
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -158,10 +165,20 @@ test('openImage opens files under .review/assets only', async () => {
   assert.ok(vscode.mock.opened[0].fsPath.startsWith(t.file('assets', BOOKMARK)));
 
   const base = shot.slice(0, shot.indexOf('/assets/') + '/assets/'.length);
-  for (const bad of [`${base}${BOOKMARK}/../../../secret.png`, `${base}../notes/${BOOKMARK}.md`, `${base}${BOOKMARK}/evil.exe`, 'https://example.com/x.png']) {
+  assert.equal(t.last('notice').text, 'Opened in the image viewer');
+  for (const bad of [
+    `${base}${BOOKMARK}/../../../secret.png`,
+    `${base}${BOOKMARK}/..%5C..%5Csecret.png`,
+    `${base}../notes/${BOOKMARK}.md`,
+    `${base}${BOOKMARK}/evil.exe`,
+    `${base}${BOOKMARK}/missing.png`,
+    'https://example.com/x.png',
+    '%E0%A4%A',
+  ]) {
     await t.send({ type: 'openImage', src: bad });
   }
   assert.equal(vscode.mock.opened.length, 1, 'no other file was opened');
+  assert.equal(t.last('notice').text, 'Screenshot file not found');
 });
 
 test('deleting a note removes its replies and screenshots', async () => {

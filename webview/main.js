@@ -203,7 +203,7 @@ function header(extraTopButton) {
   const file = b?.file || m?.workflow;
   return [
     h('div', { class: 'topbar' },
-      h('button', { class: 'back', onclick: goBack }, '← All bookmarks'),
+      h('button', { class: 'btn back', onclick: goBack }, '← All bookmarks'),
       h('span', { class: 'topbar-right' }, h('span', { id: 'saveState', class: 'muted small' }), extraTopButton)),
     h('h2', {}, b?.activityName || m?.activityName || 'Review note'),
     h('div', { class: 'pathbar' },
@@ -432,11 +432,15 @@ function goBack() {
   renderList();
 }
 
-// Screenshots in the read view open in the Windows image viewer.
-app.addEventListener('click', (e) => {
+// Screenshots in the read view open in the Windows image viewer. Capture phase, so the
+// Toast UI viewer can't swallow the click.
+document.addEventListener('click', (e) => {
   const img = e.target.closest?.('.note-body img, .reply-body img');
-  if (img) vscode.postMessage({ type: 'openImage', src: img.getAttribute('src') });
-});
+  if (!img) return;
+  e.preventDefault();
+  setSaveState('Opening screenshot…');
+  vscode.postMessage({ type: 'openImage', src: img.getAttribute('src') });
+}, true);
 
 // ---- messages from the extension ----------------------------------------------
 
@@ -475,6 +479,12 @@ window.addEventListener('message', ({ data: msg }) => {
       break;
     case 'replyError':
       setSaveState(msg.error);
+      break;
+    case 'notice':
+      setSaveState(msg.text);
+      setTimeout(() => {
+        if (document.getElementById('saveState')?.textContent === msg.text) setSaveState('');
+      }, 4000);
       break;
     case 'imageSaved': {
       const callback = pendingImages.get(msg.requestId);

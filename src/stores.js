@@ -80,6 +80,15 @@ class ReviewStore {
     return notes.filter(Boolean);
   }
 
+  async exists(uri) {
+    try {
+      await fs.stat(uri);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async readNote(noteId) {
     if (!isValidId(noteId)) return null;
     try {
