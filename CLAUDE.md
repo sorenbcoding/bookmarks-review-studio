@@ -12,7 +12,14 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - `stores.js`: file access.
   - `git.js`: the author name.
   - `src/core/`: pure logic with no `vscode` dependency, all unit-tested. `bookmarks.js` parses `bookmarks.json`, `noteFile.js` handles the note format, `reconcile.js` links notes to bookmarks.
-- `webview/`: sidebar UI. It uses the Toast UI Editor (WYSIWYG, stores Markdown) and is bundled by esbuild into `media/main.js` and `media/main.css`, which are build output and not committed.
+- `webview/`: sidebar UI. It uses the Toast UI Editor (WYSIWYG, stores Markdown) and is bundled by esbuild into `dist/webview.js` and `dist/webview.css`. `dist/` is build output: it isn't committed, and the brand check skips it.
+  - Styles live in `webview/style.css`, built on the brand tokens in `webview/sorenb-tokens.css`.
+  - That token file is a copy from the brand skill: don't edit it here.
+  - `main.js` sets `data-theme` from Studio's theme class, so the tokens follow light and dark.
+- `media/icon.svg`: the activity bar icon.
+- `branding/`: the product logo, generated with the sorenb-brand `make_logo.py`. The glyph is in `branding/glyphs/bookmark-note.svg`.
+  - The PNGs were rendered with resvg, because the Cairo DLL that `make_logo.py` uses for PNGs isn't installed.
+  - The 128 px light PNG is the package icon, and the 128 px PNGs are also the README logo, since vsce rejects SVGs in a README.
 - `test/`: `node:test` unit tests. `test/fixtures/bookmarks.json` is a real Studio sample.
 - `docs/design.md`: the design and what Studio allows.
 - `research/`: the throwaway probe extensions and their results from Studio. They are evidence for the constraints below. They are not shipped.
@@ -37,6 +44,11 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - Studio reports **no** activity selection and ignores editor selections. Focusing an activity stays with Studio's Markers panel.
 - Studio fills icon geometry instead of stroking it, so `media/icon.svg` must be built from filled shapes. This is the same constraint as in tenant-switcher-studio.
 - **Webview security:** use a nonce CSP. Accept only validated GUID ids and `.xaml` paths from webview messages.
+- **Brand colours inside Studio:**
+  - The panel chrome takes Studio's theme (`--vscode-*`).
+  - The violet `--sb-accent-extension` marks only the current workflow, links and focus.
+  - Status badges are outlined, in `--sb-status-*`.
+  - Never use orange or raw hex in `webview/style.css`.
 - Changes follow the `sorenb-dev-cycle` skill. There is **no CI** yet: rely on local `npm test` plus `npm run build`, and say so in PRs.
 
 ## Commands

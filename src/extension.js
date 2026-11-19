@@ -148,10 +148,10 @@ class ReviewController {
       if (this.view === view) this.view = undefined;
     });
     await this.ready;
-    const media = vscode.Uri.joinPath(this.context.extensionUri, 'media');
+    const dist = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: this.root ? [media, this.reviewStore.reviewDir] : [media],
+      localResourceRoots: this.root ? [dist, this.reviewStore.reviewDir] : [dist],
     };
     view.webview.onDidReceiveMessage((msg) => this.onMessage(msg));
     view.webview.html = this.html(view.webview);
@@ -308,19 +308,20 @@ class ReviewController {
 
   html(webview) {
     const nonce = [...Array(32)].map(() => Math.random().toString(36)[2]).join('');
-    const media = (file) => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', file));
+    // Webview bundle built by esbuild from webview/ (npm run build).
+    const dist = (file) => webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'dist', file));
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource} data: blob:; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="${media('main.css')}">
+  <link rel="stylesheet" href="${dist('webview.css')}">
   <title>Bookmarks Review</title>
 </head>
 <body>
   <div id="app"><p class="muted">Loading…</p></div>
-  <script nonce="${nonce}" src="${media('main.js')}"></script>
+  <script nonce="${nonce}" src="${dist('webview.js')}"></script>
 </body>
 </html>`;
   }
