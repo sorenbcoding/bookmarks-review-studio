@@ -3,9 +3,28 @@ const vscode = require('vscode');
 const { parseBookmarks, removeBookmarks } = require('./core/bookmarks');
 const { parseNote, serializeNote, isValidId, isValidReplyId, isAssetReferenced } = require('./core/noteFile');
 
+const nodeFs = require('fs');
+
 const fs = vscode.workspace.fs;
 const decode = (bytes) => Buffer.from(bytes).toString('utf8');
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Node's file system, replaceable in tests (e.g. to simulate a file locked by another program).
+const fileOps = { rm: (p, opts) => nodeFs.promises.rm(p, opts) };
+
+/**
+ * Deletes a file or folder with its contents, using Node directly: Studio's file API was slow and failed
+ * silently on folders. A missing path counts as deleted.
+ * @returns {Promise<boolean>} false if (part of) the path is still there, e.g. a file locked by another program
+ */
+async function remove(uri) {
+  try {
+    await fileOps.rm(uri.fsPath, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
+  } catch {
+    // reported through the return value
+  }
+  return !nodeFs.existsSync(uri.fsPath);
+}
 
 class BookmarkStore {
   constructor(root) {
@@ -156,13 +175,30 @@ class ReviewStore {
     await fs.writeFile(uri, Buffer.from(text, 'utf8'));
   }
 
-  /** Deletes a note with its replies and screenshots. */
+  /**
+   * Deletes a note with its replies and screenshots.
+   * @returns {Promise<string[]>} paths that could not be deleted yet (e.g. locked by another program)
+   */
   async deleteNote(noteId) {
-    if (!isValidId(noteId)) return;
+    if (!isValidId(noteId)) return [];
     this.lastWritten.delete(this.noteUri(noteId).fsPath);
-    await fs.delete(this.noteUri(noteId)).then(undefined, () => {});
-    await fs.delete(vscode.Uri.joinPath(this.repliesDir, noteId), { recursive: true }).then(undefined, () => {});
-    await fs.delete(vscode.Uri.joinPath(this.assetsDir, noteId), { recursive: true }).then(undefined, () => {});
+    const left = [];
+    for (const uri of [vscode.Uri.joinPath(this.assetsDir, noteId), vscode.Uri.joinPath(this.repliesDir, noteId), this.noteUri(noteId)]) {
+      if (!(await remove(uri))) left.push(uri.fsPath);
+    }
+    return left;
+  }
+
+  /** Retries deleting paths under .review/. @returns {Promise<string[]>} the paths still there */
+  async removePaths(paths) {
+    const left = [];
+    for (const p of paths) {
+      const relative = require('path').relative(this.reviewDir.fsPath, p);
+      if (!relative || relative.startsWith('..') || require('path').isAbsolute(relative)) continue; // only inside .review/
+      if (!(await remove(vscode.Uri.file(p)))) left.push(p);
+    }
+    await this.pruneEmptyDirs(this.reviewDir);
+    return left;
   }
 
   // ---- replies: .review/replies/<noteId>/<replyId>.md, one file per reply (append-only, merge-friendly)
@@ -212,10 +248,10 @@ class ReviewStore {
     if (!isValidId(noteId) || !isValidReplyId(replyId)) return;
     const uri = this.replyUri(noteId, replyId);
     this.lastWritten.delete(uri.fsPath);
-    await fs.delete(uri).then(undefined, () => {});
+    await remove(uri);
     const dir = vscode.Uri.joinPath(this.repliesDir, noteId);
     const left = await fs.readDirectory(dir).then((e) => e.length, () => 0);
-    if (left === 0) await fs.delete(dir, { recursive: true }).then(undefined, () => {});
+    if (left === 0) await remove(dir);
   }
 
   /** Number of replies per note id, for the list. */
@@ -264,6 +300,50 @@ class ReviewStore {
     return files;
   }
 
+  /**
+   * Files under assets/ and replies/ that belong to no note: folders whose note file is gone (for example
+   * a screenshot pasted into a new note that was never saved) and loose files. Keys as in listFiles().
+   */
+  async strayFiles() {
+    const hasNote = new Set((await this.listFiles(this.notesDir, 'notes/')).map((f) => f.path));
+    const strays = [];
+    for (const [dir, prefix] of [[this.assetsDir, 'assets/'], [this.repliesDir, 'replies/']]) {
+      for (const f of await this.listFiles(dir, prefix)) {
+        const parts = f.path.split('/');
+        if (parts.length !== 3 || !hasNote.has(`notes/${parts[1]}.md`)) strays.push(f);
+      }
+    }
+    return strays;
+  }
+
+  /**
+   * Deletes the given stray files, then empty folders under .review/ and .review/ itself if empty.
+   * @returns {Promise<string[]>} paths that could not be deleted yet
+   */
+  async removeStrays(files) {
+    const left = [];
+    for (const f of files) if (!(await remove(f.uri))) left.push(f.uri.fsPath);
+    await this.pruneEmptyDirs(this.reviewDir);
+    return left;
+  }
+
+  /** Removes empty folders below `dir` (and `dir` itself when it ends up empty). @returns {Promise<boolean>} emptied */
+  async pruneEmptyDirs(dir) {
+    let entries;
+    try {
+      entries = await fs.readDirectory(dir);
+    } catch {
+      return false;
+    }
+    let left = 0;
+    for (const [name, type] of entries) {
+      if (type === vscode.FileType.Directory && (await this.pruneEmptyDirs(vscode.Uri.joinPath(dir, name)))) continue;
+      left++;
+    }
+    if (left) return false;
+    return remove(dir);
+  }
+
   /** Deletes screenshots of a note that no text references, except the file names in `keep`. */
   async cleanupAssets(noteId, texts, keep = new Set()) {
     const dir = vscode.Uri.joinPath(this.assetsDir, noteId);
@@ -276,12 +356,12 @@ class ReviewStore {
     let kept = 0;
     for (const [name, type] of entries) {
       if (type === vscode.FileType.File && !keep.has(name) && !isAssetReferenced(noteId, name, texts)) {
-        await fs.delete(vscode.Uri.joinPath(dir, name)).then(undefined, () => {});
+        await remove(vscode.Uri.joinPath(dir, name));
       } else {
         kept++;
       }
     }
-    if (kept === 0) await fs.delete(dir, { recursive: true }).then(undefined, () => {});
+    if (kept === 0) await remove(dir);
   }
 
   /** Watches note and reply files; onChange gets the changed file's URI. */
@@ -297,4 +377,4 @@ class ReviewStore {
   }
 }
 
-module.exports = { BookmarkStore, ReviewStore };
+module.exports = { fileOps, remove, BookmarkStore, ReviewStore };

@@ -47,6 +47,7 @@ const mock = {
   providers: new Map(),
   settings: {}, // 'section.key' -> value (user settings)
   settingsReadOnly: false, // true: update() throws, like a host that can't save settings
+  folderDeleteFails: false, // true: fs.delete() on a folder throws, like a host that can't delete folders
 };
 
 module.exports = {
@@ -69,7 +70,10 @@ module.exports = {
       writeFile: mapErrors((u, data) => fsp.writeFile(u.fsPath, data)),
       createDirectory: (u) => fsp.mkdir(u.fsPath, { recursive: true }),
       readDirectory: mapErrors(async (u) => (await fsp.readdir(u.fsPath, { withFileTypes: true })).map((d) => [d.name, d.isDirectory() ? 2 : 1])),
-      delete: mapErrors((u, opts) => fsp.rm(u.fsPath, { recursive: Boolean(opts?.recursive) })),
+      delete: mapErrors(async (u, opts) => {
+        if (mock.folderDeleteFails && (await fsp.stat(u.fsPath)).isDirectory()) throw new Error('EPERM: operation not permitted');
+        return fsp.rm(u.fsPath, { recursive: Boolean(opts?.recursive) });
+      }),
       stat: mapErrors((u) => fsp.stat(u.fsPath)),
     },
     findFiles: async () => [],
