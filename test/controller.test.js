@@ -15,6 +15,7 @@ Module._resolveFilename = function (request, ...rest) {
 const vscode = require('vscode');
 const { activate } = require('../src/extension');
 const opener = require('../src/openFile');
+const { unzip } = require('./helpers/unzip');
 
 // Never start a real image viewer from the tests.
 opener.openWithDefaultApp = async (uri) => {
@@ -50,7 +51,15 @@ async function setup() {
     options: {},
     html: '',
     asWebviewUri: (u) => ({ toString: () => `https://wv/${u.fsPath.replace(/\\/g, '/')}` }),
-    postMessage: (m) => posted.push(m),
+    postMessage: (m) => {
+      posted.push(m);
+      // The panel renders report Markdown with Toast UI; here each piece becomes one <p>, with images.
+      if (m.type === 'renderReport') {
+        const toHtml = (md) => `<p>${md.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">')}</p>`;
+        const html = Object.fromEntries(m.sections.map((sct) => [sct.id, toHtml(sct.markdown)]));
+        setTimeout(() => handler({ type: 'reportRendered', requestId: m.requestId, html }), 0);
+      }
+    },
     onDidReceiveMessage: (fn) => (handler = fn),
   };
   await controller.resolveWebviewView({ webview, onDidDispose() {} });
@@ -61,7 +70,7 @@ async function setup() {
   };
   const last = (type) => posted.filter((m) => m.type === type).at(-1);
   const file = (...p) => path.join(root, '.review', ...p);
-  return { root, controller, posted, send, last, file };
+  return { root, controller, posted, send, last, file, globalState };
 }
 
 async function pasteImage(t) {
@@ -247,4 +256,62 @@ test('hiding notes without a bookmark is a user setting, with extension storage 
   vscode.mock.settingsReadOnly = true;
   await t.send({ type: 'setHideOrphans', value: false });
   assert.equal(t.last('state').hideOrphans, false, 'kept in extension storage when the setting cannot be saved');
+});
+
+test('wrap up: exports a zip with summary, report and .review/, then removes resolved notes', async () => {
+  const t = await setup();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-'));
+  await t.globalState.update('archiveFolder', out);
+  const resolved = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `Look ![s](${shot})`, status: 'open' });
+  await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'On it' });
+  await t.send({ type: 'save', bookmarkId: resolved, noteId: resolved, body: 'Done point', status: 'resolved' });
+
+  await t.send({ type: 'exportArchive', remove: 'closed' });
+  const done = t.last('archived');
+  assert.ok(done, JSON.stringify(t.last('archiveError')));
+  assert.equal(path.dirname(done.file), out);
+  assert.match(path.basename(done.file), /-review-\d{4}-\d\d-\d\d-\d{4}\.zip$/);
+  assert.deepEqual([done.removed, done.kept], [1, 1]);
+
+  const files = unzip(fs.readFileSync(done.file));
+  const names = Object.keys(files);
+  for (const n of ['summary.md', 'report.html', 'studio-bookmarks.json', `.review/notes/${BOOKMARK}.md`, `.review/notes/${resolved}.md`]) {
+    assert.ok(names.includes(n), `${n} in ${names.join(', ')}`);
+  }
+  assert.ok(names.some((n) => n.startsWith(`.review/replies/${BOOKMARK}/`)));
+  const png = names.find((n) => n.startsWith(`.review/assets/${BOOKMARK}/`));
+  assert.ok(png);
+  const report = files['report.html'].toString();
+  assert.match(report, /data:image\/png;base64,/, 'screenshot embedded in report.html');
+  assert.match(report, /On it/);
+  assert.ok(files['summary.md'].toString().includes(`](.review/${png.slice('.review/'.length)})`));
+
+  // The resolved note is gone from the project, the open one and its files are kept.
+  assert.ok(!fs.existsSync(t.file('notes', `${resolved}.md`)));
+  assert.ok(fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
+  assert.ok(fs.existsSync(path.join(t.root, '.review', png.slice('.review/'.length))));
+
+  // A second export the same minute gets its own file name.
+  await t.send({ type: 'exportArchive', remove: 'none' });
+  assert.notEqual(t.last('archived').file, done.file);
+});
+
+test('wrap up: nothing is removed when the archive cannot be written', async () => {
+  const t = await setup();
+  const blocker = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-')), 'a-file');
+  fs.writeFileSync(blocker, 'not a folder');
+  await t.globalState.update('archiveFolder', blocker);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Point', status: 'resolved' });
+  await t.send({ type: 'exportArchive', remove: 'all' });
+  assert.match(t.last('archiveError')?.error ?? '', /Could not write the review archive .* No notes were removed/);
+  assert.ok(fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
+});
+
+test('wrap up: an unknown removal mode is ignored', async () => {
+  const t = await setup();
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Point', status: 'resolved' });
+  await t.send({ type: 'exportArchive', remove: 'everything' });
+  assert.ok(!t.last('archived') && !t.last('archiveError'));
 });

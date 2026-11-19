@@ -201,3 +201,15 @@ button.danger { color: var(--sb-status-error); text-decoration: underline; }
 #editor .toastui-editor-contents a, #replyEditor .toastui-editor-contents a { color: var(--accent); }
 #editor .toastui-editor-contents img, #replyEditor .toastui-editor-contents img { max-width: 100%; height: auto; border: var(--sb-border-width) solid var(--border); }
 #editor .toastui-editor-toolbar, #replyEditor .toastui-editor-toolbar { flex-wrap: wrap; }
+
+/* ---- wrap up */
+.wrapup-entry { margin-top: var(--sb-space-4); }
+.wrapup-list { margin: 0 0 var(--sb-space-3); padding-left: var(--sb-space-4); }
+.section-title { font-size: 1em; margin: var(--sb-space-4) 0 var(--sb-space-1); }
+.radios { display: flex; flex-direction: column; gap: var(--sb-space-2); }
+.radio { display: flex; align-items: flex-start; gap: var(--sb-space-2); cursor: pointer; }
+.radio input { margin: 2px 0 0; }
+.hint { display: block; }
+.error { color: var(--sb-status-error); }
+/* Off-screen host for rendering report.html (a style attribute would be blocked by the CSP). */
+.render-host { position: absolute; left: -10000px; top: 0; width: 800px; }

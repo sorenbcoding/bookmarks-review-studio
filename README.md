@@ -56,6 +56,23 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
   - You can edit or delete only your own replies. Ownership is matched on `git config user.name`.
   - The reviewer's note is never changed by a reply.
 
+### Wrap up a review
+**Wrap up review…** at the bottom of the list ends a review round.
+1. Check the counts, and choose where to save. The default is Documents, and your last choice is remembered.
+2. Choose what to remove from the project after the export:
+   - resolved and won't fix notes (open notes stay for the next round);
+   - all notes;
+   - nothing.
+3. Click **Export archive**, or **Export and remove…** and confirm.
+
+The archive is `<project>-review-<yyyy-mm-dd-hhmm>.zip`. It contains:
+- `report.html`: every note grouped by workflow, with its status, author, Studio message, replies and screenshots, in one page for any browser;
+- `summary.md`: the same as Markdown;
+- `.review/`: the note files as they were. Unzip it into a project to restore the notes;
+- `studio-bookmarks.json`: Studio's bookmarks at the time.
+
+Notes are removed only after the archive is saved. Studio's bookmarks are not changed. Commit the removal of the `.review/` files to finish the review in Git.
+
 ### Stored files
 ```
 <project>/
