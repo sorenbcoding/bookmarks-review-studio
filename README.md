@@ -45,6 +45,11 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
   - With **This workflow only** on, only that workflow's notes are listed.
   - **Hide** hides them, and **Show** brings them back. The note files are kept, so they still re-attach. This is the setting `bookmarksReview.hideNotesWithoutBookmark`, default off.
 - **Deleting** a note or a reply asks for confirmation in the panel.
+- **Settings…** at the bottom of the list opens the Settings view:
+  - **Hide notes without a bookmark**, and **Remove Studio's bookmarks when wrapping up a review**, as checkboxes;
+  - **Delete all notes** deletes every note, with its replies and screenshots;
+  - **Delete all notes and bookmarks** also removes every bookmark from Studio.
+  - Each delete action shows the counts and asks for confirmation. To keep a record, use **Wrap up review…** first.
 
 ### Note view
 - **Read view.** An existing note opens read-only, rendered as formatted text.

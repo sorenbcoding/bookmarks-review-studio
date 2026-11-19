@@ -26,8 +26,11 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 
 ## Constraints (verified in Studio, see `research/`)
 - **Treat `.project/bookmarks.json` as Studio's file: read only.**
-  - **The one exception** is wrapping up a review with `bookmarksReview.removeBookmarksOnWrapUp` on (default off). Then `BookmarkStore.removeAllExcept` runs `removeBookmarks` in `src/core/bookmarks.js`, after the archive is written:
-    - It keeps the bookmarks of notes that stay, and transient ones.
+  - **There are two exceptions.** Both go through `BookmarkStore.removeAllExcept`, which runs `removeBookmarks` in `src/core/bookmarks.js`, and both happen only on an explicit user action:
+    - **Wrapping up a review** with `bookmarksReview.removeBookmarksOnWrapUp` on (default off). It runs after the archive is written, and keeps the bookmarks of notes that stay.
+    - **Delete all notes and bookmarks** in the Settings view, after a confirmation in the panel. It keeps nothing.
+  - **What the removal does:**
+    - It keeps transient bookmarks.
     - It drops workflows left empty.
     - It writes Studio's format: 2-space JSON, CRLF line endings, and a BOM only if the file had one.
     - Verified in Studio: the Markers panel picks up the change while the project is open.
@@ -62,6 +65,9 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
     - If the panel doesn't answer within 30 s, the bodies are shown as plain text.
     - Its styles are `webview/report.css` with the brand tokens, bundled to `dist/report.css`.
   - **Removal:** notes are removed only after the zip is written and its size checked. Modes are `closed` (resolved and won't fix), `all` and `none`.
+- **The Settings view** (`renderSettings` in `webview/main.js`) holds:
+  - checkboxes for the two settings;
+  - a Delete section with **Delete all notes** and **Delete all notes and bookmarks** (`deleteAll` in `src/extension.js`). Each asks for confirmation, with the counts.
 - **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
 - **Note view:**
   - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.

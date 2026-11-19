@@ -27,6 +27,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   - Bookmarks whose note stays in the project are kept.
   - The archive keeps a copy of all bookmarks.
 
+- **A Settings view,** opened with **Settings…** at the bottom of the list. ([#17](https://github.com/sorenbcoding/bookmarks-review-studio/issues/17))
+  - It holds the two settings as checkboxes.
+  - **Delete all notes** and **Delete all notes and bookmarks** each ask for confirmation in the panel.
+
 ### Fixed
 - **Clicking a note without a bookmark** opens it. Before, nothing happened. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
 - **This workflow only** shows that workflow's notes without a bookmark. Before, they were hidden. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))

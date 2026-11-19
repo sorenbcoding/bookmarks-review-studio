@@ -19,6 +19,7 @@ let dirty = false;
 let saveTimer;
 let requestSeq = 0;
 let wrapUp = null; // { folder, remove, phase: 'form' | 'exporting' | 'done', result, error } while the wrap-up view is shown
+let settingsView = null; // { hideOrphans, removeBookmarks, phase: 'form' | 'deleting' | 'done', result } while Settings is shown
 const pendingImages = new Map();
 
 // Per-viewer UI preferences, kept by the webview host between sessions.
@@ -99,6 +100,7 @@ function renderList() {
   destroyEditors();
   current = null;
   wrapUp = null;
+  settingsView = null;
   app.replaceChildren();
   if (!state) return app.append(h('p', { class: 'muted' }, 'Loading…'));
   if (!state.hasProject) return app.append(h('p', { class: 'muted' }, 'Open a UiPath project to see its bookmarks.'));
@@ -145,10 +147,11 @@ function renderList() {
     app.append(h('ul', { class: `rows${current ? ' current' : ''}` }, wf.bookmarks.map((b) => row(b))));
   }
 
-  if (noteSummaries().length) {
-    app.append(h('div', { class: 'wrapup-entry' },
-      h('button', { class: 'btn', title: 'Export all notes to a zip archive and remove them from the project', onclick: startWrapUp }, 'Wrap up review…')));
-  }
+  app.append(h('div', { class: 'list-footer' },
+    noteSummaries().length
+      ? h('button', { class: 'btn', title: 'Export all notes to a zip archive and remove them from the project', onclick: startWrapUp }, 'Wrap up review…')
+      : null,
+    h('button', { class: 'btn', title: 'Settings, and deleting all notes or bookmarks', onclick: startSettings }, 'Settings…')));
 
   // Notes whose bookmark was deleted in Studio. With "This workflow only", only that workflow's.
   const orphans = prefs.onlyCurrent ? state.orphans.filter((o) => isCurrent(o.workflow)) : state.orphans;
@@ -199,6 +202,82 @@ function open(target) {
   vscode.postMessage({ type: 'open', ...target });
 }
 
+// ---- settings: the two switches, and deleting all notes (and bookmarks) ---------
+
+function startSettings() {
+  destroyEditors();
+  current = null;
+  wrapUp = null;
+  settingsView = { hideOrphans: Boolean(state?.hideOrphans), removeBookmarks: false, phase: 'form' };
+  vscode.postMessage({ type: 'settingsInfo' });
+  renderSettings();
+}
+
+function settingCheckbox(id, label, hint, checked, onchange) {
+  return h('label', { class: 'radio' },
+    h('input', { type: 'checkbox', id, checked, disabled: settingsView.phase === 'deleting', onchange: (e) => onchange(e.target.checked) }),
+    h('span', {}, label, h('span', { class: 'muted small hint' }, hint)));
+}
+
+function renderSettings() {
+  const notes = noteSummaries().length;
+  const bookmarks = state ? state.workflows.reduce((n, w) => n + w.bookmarks.length, 0) : 0;
+  const deleteAll = (withBookmarks) => {
+    settingsView.phase = 'deleting';
+    vscode.postMessage({ type: 'deleteAll', withBookmarks });
+    renderSettings();
+  };
+  let actions;
+  if (settingsView.phase === 'deleting') {
+    actions = h('p', { class: 'muted' }, 'Deleting…');
+  } else if (settingsView.phase === 'done') {
+    const r = settingsView.result;
+    actions = h('div', {},
+      h('p', {}, `Deleted ${plural(r.notes, 'note')}${r.withBookmarks ? ` and removed ${plural(r.bookmarks, 'bookmark')} from Studio` : ''}. Commit the change to finish it in Git.`),
+      h('button', { class: 'btn', onclick: renderList }, 'Done'));
+  } else {
+    actions = h('div', { class: 'danger-actions' },
+      notes
+        ? confirmButton({
+            label: 'Delete all notes',
+            cls: 'btn danger-btn',
+            question: `Delete all ${plural(notes, 'note')} with their replies and screenshots?`,
+            yes: `Delete ${plural(notes, 'note')}`,
+            onConfirm: () => deleteAll(false),
+          })
+        : h('p', { class: 'muted small' }, 'There are no notes to delete.'),
+      notes || bookmarks
+        ? confirmButton({
+            label: 'Delete all notes and bookmarks',
+            cls: 'btn danger-btn',
+            question: `Delete all ${plural(notes, 'note')} and remove all ${plural(bookmarks, 'bookmark')} from Studio?`,
+            yes: 'Delete everything',
+            onConfirm: () => deleteAll(true),
+          })
+        : null);
+  }
+  app.replaceChildren(
+    h('div', { class: 'topbar' },
+      h('button', { class: 'btn back', onclick: renderList, disabled: settingsView.phase === 'deleting' }, '← All bookmarks')),
+    h('h2', {}, 'Settings'),
+    h('div', { class: 'radios' },
+      settingCheckbox('setHideOrphans', 'Hide notes without a bookmark', 'The note files are kept and still re-attach.', settingsView.hideOrphans, (value) => {
+        settingsView.hideOrphans = value;
+        vscode.postMessage({ type: 'setHideOrphans', value });
+      }),
+      settingCheckbox('setRemoveBookmarks', "Remove Studio's bookmarks when wrapping up a review", 'Bookmarks of notes that stay in the project are kept.', settingsView.removeBookmarks, (value) => {
+        settingsView.removeBookmarks = value;
+        vscode.postMessage({ type: 'setRemoveBookmarks', value });
+      })),
+    h('section', { class: 'danger-zone' },
+      h('h3', { class: 'section-title' }, 'Delete'),
+      h('p', { class: 'small' },
+        `${plural(notes, 'note')} and ${plural(bookmarks, 'bookmark')} in this project. Deleting can't be undone in Studio. Only committed files can be restored from Git. To keep a record, use `,
+        h('button', { class: 'link small', onclick: startWrapUp, disabled: !notes || settingsView.phase === 'deleting' }, 'Wrap up review…'),
+        ' instead.'),
+      actions));
+}
+
 // ---- wrap up: export the review to an archive and remove notes ----------------
 
 /** Summaries of every note: on a bookmark or without one. */
@@ -210,6 +289,7 @@ function noteSummaries() {
 function startWrapUp() {
   destroyEditors();
   current = null;
+  settingsView = null;
   wrapUp = { folder: null, remove: 'closed', removeBookmarks: false, phase: 'form' };
   vscode.postMessage({ type: 'wrapUpInfo' });
   renderWrapUp();
@@ -633,6 +713,8 @@ window.addEventListener('message', ({ data: msg }) => {
       state = msg;
       if (wrapUp) {
         if (wrapUp.phase === 'form') renderWrapUp();
+      } else if (settingsView) {
+        if (settingsView.phase === 'form') renderSettings();
       } else if (!current) {
         renderList();
       } else if (current.bookmark) {
@@ -649,7 +731,7 @@ window.addEventListener('message', ({ data: msg }) => {
       break;
     case 'activeWorkflow':
       if (state) state.activeWorkflow = msg.file;
-      if (state && !current && !wrapUp) renderList();
+      if (state && !current && !wrapUp && !settingsView) renderList();
       break;
     case 'note':
       renderNote(msg);
@@ -710,6 +792,20 @@ window.addEventListener('message', ({ data: msg }) => {
         wrapUp.phase = 'form';
         wrapUp.error = msg.error;
         renderWrapUp();
+      }
+      break;
+    case 'settingsInfo':
+      if (settingsView && settingsView.phase === 'form') {
+        settingsView.hideOrphans = msg.hideOrphans === true;
+        settingsView.removeBookmarks = msg.removeBookmarks === true;
+        renderSettings();
+      }
+      break;
+    case 'allDeleted':
+      if (settingsView) {
+        settingsView.phase = 'done';
+        settingsView.result = msg;
+        renderSettings();
       }
       break;
     case 'deleted':

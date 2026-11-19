@@ -98,6 +98,7 @@ class ReviewController {
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration(`${CONFIG}.${HIDE_ORPHANS}`)) this.postState();
         if (e.affectsConfiguration(`${CONFIG}.${REMOVE_BOOKMARKS}`)) this.postWrapUpInfo();
+        if (SETTINGS.some((key) => e.affectsConfiguration(`${CONFIG}.${key}`))) this.postSettings();
       })
     );
     await this.refresh();
@@ -295,10 +296,18 @@ class ReviewController {
       case 'setHideOrphans':
         await this.setSetting(HIDE_ORPHANS, msg.value === true);
         this.postState();
+        this.postSettings();
         break;
       case 'setRemoveBookmarks':
         await this.setSetting(REMOVE_BOOKMARKS, msg.value === true);
         this.postWrapUpInfo();
+        this.postSettings();
+        break;
+      case 'settingsInfo':
+        this.postSettings();
+        break;
+      case 'deleteAll':
+        await this.deleteAll(msg.withBookmarks === true);
         break;
       case 'openWorkflow':
         await this.openWorkflow(msg.file);
@@ -510,6 +519,30 @@ class ReviewController {
       log.appendLine(`Could not save the setting ${CONFIG}.${key}, kept in extension storage: ${err?.message ?? err}`);
       await this.context.globalState?.update(key, value);
     }
+  }
+
+  // ---- Settings view ----
+
+  postSettings() {
+    this.post({ type: 'settingsInfo', hideOrphans: this.setting(HIDE_ORPHANS), removeBookmarks: this.setting(REMOVE_BOOKMARKS) });
+  }
+
+  /**
+   * Deletes every note with its replies and screenshots and, with `withBookmarks`, every Studio bookmark
+   * except transient ones. The panel asks for confirmation first. Git keeps the history.
+   */
+  async deleteAll(withBookmarks) {
+    await this.refresh();
+    const ids = [...this.attached.values(), ...this.orphans].map((n) => n.meta.noteId);
+    let removedBookmarks = 0;
+    await this.enqueue(async () => {
+      for (const id of ids) await this.reviewStore.deleteNote(id);
+      if (withBookmarks) removedBookmarks = await this.bookmarkStore.removeAllExcept(new Set());
+    });
+    log.appendLine(`Deleted all notes (${ids.length})${withBookmarks ? ` and ${removedBookmarks} bookmarks` : ''}`);
+    for (const noteId of ids) this.post({ type: 'deleted', noteId });
+    this.post({ type: 'allDeleted', notes: ids.length, bookmarks: removedBookmarks, withBookmarks });
+    await this.refresh();
   }
 
   // ---- Wrap up: export the review to a zip and remove notes from the project ----
