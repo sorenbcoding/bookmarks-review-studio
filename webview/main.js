@@ -210,7 +210,7 @@ function noteSummaries() {
 function startWrapUp() {
   destroyEditors();
   current = null;
-  wrapUp = { folder: null, remove: 'closed', phase: 'form' };
+  wrapUp = { folder: null, remove: 'closed', removeBookmarks: false, phase: 'form' };
   vscode.postMessage({ type: 'wrapUpInfo' });
   renderWrapUp();
 }
@@ -243,6 +243,9 @@ function renderWrapUp() {
       h('p', {}, r.removed
         ? `Removed ${plural(r.removed, 'note')} from the project${r.kept ? `, kept ${r.kept}` : ''}. Commit the change to .review/ to finish the review in Git.`
         : 'No notes were removed.'),
+      r.removedBookmarks
+        ? h('p', {}, `Removed ${plural(r.removedBookmarks, 'bookmark')} from Studio. The archive has a copy in studio-bookmarks.json.`)
+        : null,
       h('div', { class: 'actions' },
         h('button', { class: 'btn primary', onclick: () => vscode.postMessage({ type: 'revealArchive' }) }, 'Show in Explorer'),
         h('button', { class: 'btn', onclick: renderList }, 'Done')));
@@ -279,7 +282,17 @@ function renderWrapUp() {
           renderWrapUp();
         } }),
         h('span', {}, o.label, h('span', { class: 'muted small hint' }, `${o.hint} ${removalCount(notes, o.value) ? `(${removalCount(notes, o.value)})` : ''}`.trim()))))),
-    h('p', { class: 'muted small' }, 'Notes are removed only after the archive is saved. Studio\'s bookmarks are not changed.'),
+    h('label', { class: 'radio' },
+      h('input', { type: 'checkbox', id: 'removeBookmarks', checked: wrapUp.removeBookmarks, disabled: wrapUp.phase === 'exporting', onchange: (e) => {
+        wrapUp.removeBookmarks = e.target.checked;
+        vscode.postMessage({ type: 'setRemoveBookmarks', value: e.target.checked });
+        renderWrapUp();
+      } }),
+      h('span', {}, "Also remove Studio's bookmarks",
+        h('span', { class: 'muted small hint' }, 'Bookmarks of notes that stay in the project are kept. Saved as a setting.'))),
+    h('p', { class: 'muted small' }, wrapUp.removeBookmarks
+      ? 'Notes and bookmarks are removed only after the archive is saved.'
+      : "Notes are removed only after the archive is saved. Studio's bookmarks are not changed."),
     wrapUp.error ? h('p', { class: 'error' }, wrapUp.error) : null,
     h('div', { class: 'actions' },
       wrapUp.phase === 'exporting'
@@ -675,8 +688,11 @@ window.addEventListener('message', ({ data: msg }) => {
       break;
     case 'wrapUpInfo':
       if (wrapUp) {
+        const changed = wrapUp.removeBookmarks !== (msg.removeBookmarks === true);
         wrapUp.folder = msg.folder;
-        document.getElementById('archiveFolder')?.replaceChildren(msg.folder);
+        wrapUp.removeBookmarks = msg.removeBookmarks === true;
+        if (changed && wrapUp.phase === 'form') renderWrapUp();
+        else document.getElementById('archiveFolder')?.replaceChildren(msg.folder);
       }
       break;
     case 'renderReport':

@@ -60,6 +60,11 @@
           "type": "boolean",
           "default": false,
           "description": "Hides review notes whose Studio bookmark was deleted. The note files stay in .review/, re-attach if the bookmark is added again, and can be shown again from the panel."
+        },
+        "bookmarksReview.removeBookmarksOnWrapUp": {
+          "type": "boolean",
+          "default": false,
+          "description": "When a review is wrapped up, also removes Studio's bookmarks from .project/bookmarks.json after the archive is saved. Bookmarks whose note stays in the project are kept. The archive keeps a copy of all bookmarks."
         }
       }
     }

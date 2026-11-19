@@ -42,4 +42,27 @@ function parseBookmarks(text) {
   return result;
 }
 
-module.exports = { parseBookmarks };
+/**
+ * Removes bookmarks from bookmarks.json text, for wrapping up a review. Keeps the bookmarks in `keepIds`,
+ * transient ones and anything that isn't a bookmark entry. A workflow left without bookmarks is dropped.
+ * Output follows Studio's format: 2-space JSON with CRLF line endings, BOM only if the input had one.
+ * @returns {{ text: string, removed: number }}
+ */
+function removeBookmarks(text, keepIds) {
+  const raw = String(text);
+  const bom = raw.startsWith('﻿') ? '﻿' : '';
+  const json = JSON.parse(raw.slice(bom.length));
+  if (!json || typeof json.Value !== 'object' || json.Value === null) return { text: raw, removed: 0 };
+  let removed = 0;
+  for (const [file, list] of Object.entries(json.Value)) {
+    if (!Array.isArray(list)) continue;
+    const kept = list.filter((b) => !b || typeof b.Id !== 'string' || b.IsTransient === true || keepIds.has(b.Id));
+    removed += list.length - kept.length;
+    if (kept.length) json.Value[file] = kept;
+    else delete json.Value[file];
+  }
+  if (!removed) return { text: raw, removed: 0 };
+  return { text: bom + JSON.stringify(json, null, 2).replace(/\n/g, '\r\n'), removed };
+}
+
+module.exports = { parseBookmarks, removeBookmarks };

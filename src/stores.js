@@ -1,6 +1,6 @@
 // File access for Studio's bookmarks.json (read-only) and the .review/ folder (ours).
 const vscode = require('vscode');
-const { parseBookmarks } = require('./core/bookmarks');
+const { parseBookmarks, removeBookmarks } = require('./core/bookmarks');
 const { parseNote, serializeNote, isValidId, isValidReplyId, isAssetReferenced } = require('./core/noteFile');
 
 const fs = vscode.workspace.fs;
@@ -30,6 +30,22 @@ class BookmarkStore {
       }
     }
     return this.last;
+  }
+
+  /**
+   * Removes every bookmark except `keepIds` from Studio's file. The only write to bookmarks.json,
+   * used when a review is wrapped up with removeBookmarksOnWrapUp on. @returns {Promise<number>} removed
+   */
+  async removeAllExcept(keepIds) {
+    let text;
+    try {
+      text = decode(await fs.readFile(this.uri));
+    } catch {
+      return 0;
+    }
+    const result = removeBookmarks(text, keepIds);
+    if (result.removed) await fs.writeFile(this.uri, Buffer.from(result.text, 'utf8'));
+    return result.removed;
   }
 
   watch(onChange) {
