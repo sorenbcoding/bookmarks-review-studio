@@ -45,6 +45,8 @@ const mock = {
   messages: [],
   opened: [],
   providers: new Map(),
+  settings: {}, // 'section.key' -> value (user settings)
+  settingsReadOnly: false, // true: update() throws, like a host that can't save settings
 };
 
 module.exports = {
@@ -71,6 +73,14 @@ module.exports = {
       stat: mapErrors((u) => fsp.stat(u.fsPath)),
     },
     findFiles: async () => [],
+    getConfiguration: (section) => ({
+      get: (key, fallback) => mock.settings[`${section}.${key}`] ?? fallback,
+      update: async (key, value) => {
+        if (mock.settingsReadOnly) throw new Error('Unable to write to User Settings');
+        mock.settings[`${section}.${key}`] = value;
+      },
+    }),
+    onDidChangeConfiguration: () => noopDisposable,
     createFileSystemWatcher: watcher,
   },
   window: {
@@ -94,5 +104,6 @@ module.exports = {
       return true;
     },
   },
+  ConfigurationTarget: { Global: 1, Workspace: 2 },
   commands: { executeCommand: async () => undefined },
 };
