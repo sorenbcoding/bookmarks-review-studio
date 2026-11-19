@@ -21,6 +21,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   - The confirmation is shown in the panel.
 - **Notes without a bookmark can be hidden** from the panel with **Hide**, or the setting `bookmarksReview.hideNotesWithoutBookmark`. The files are kept. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
 
+- **Wrap up review…** exports all notes to a zip archive. It can then remove the resolved and won't fix notes, or all notes, from the project. ([#9](https://github.com/sorenbcoding/bookmarks-review-studio/issues/9))
+  - The archive holds `report.html`, a single page with the screenshots embedded, plus `summary.md`, the `.review/` files and Studio's bookmarks.
+
 ### Fixed
 - **Clicking a note without a bookmark** opens it. Before, nothing happened. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
 - **This workflow only** shows that workflow's notes without a bookmark. Before, they were hidden. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))

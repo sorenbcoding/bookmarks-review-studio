@@ -70,7 +70,13 @@ What this means for the UI:
 - The panel follows the workflow in front, and offers "Show in Studio" to bring a workflow forward.
 - Focusing the exact activity stays with Studio's Markers panel.
 
+## Wrapping up a review
+- **Wrap up review…** exports the review to a zip archive, then removes notes from the project. The user chooses which each time: resolved and won't fix, all, or none.
+- **Contents:** `report.html`, a page that opens in any browser with the screenshots embedded, plus `summary.md`, the `.review/` files (unzip to restore) and a copy of Studio's bookmarks.
+- **Git keeps the history.** Removing the notes is a normal change to commit, so the history keeps every note too.
+- **Rendering:** the extension host has no Markdown renderer, and Toast UI's parser ships only inside the editor bundle. So the panel renders the note and reply bodies for `report.html`, and the result matches the read view.
+
 ## Next ideas
-- Export a review summary as Markdown, for the PR description.
+- Add the review summary to the PR description.
 - Filter the list by status.
 - Find out what `IsTransient` means. Such bookmarks are ignored for now.
