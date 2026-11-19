@@ -315,3 +315,31 @@ test('wrap up: an unknown removal mode is ignored', async () => {
   await t.send({ type: 'exportArchive', remove: 'everything' });
   assert.ok(!t.last('archived') && !t.last('archiveError'));
 });
+
+test('wrap up: Studio bookmarks are untouched unless removeBookmarksOnWrapUp is on', async () => {
+  const t = await setup();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-'));
+  await t.globalState.update('archiveFolder', out);
+  const bookmarksFile = path.join(t.root, '.project', 'bookmarks.json');
+  const before = fs.readFileSync(bookmarksFile);
+  const resolved = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Still open', status: 'open' });
+  await t.send({ type: 'save', bookmarkId: resolved, noteId: resolved, body: 'Done', status: 'resolved' });
+
+  await t.send({ type: 'exportArchive', remove: 'none' });
+  assert.equal(t.last('archived').removedBookmarks, 0);
+  assert.ok(fs.readFileSync(bookmarksFile).equals(before), 'setting off: bookmarks.json byte-identical');
+
+  await t.send({ type: 'setRemoveBookmarks', value: true });
+  assert.equal(vscode.mock.settings['bookmarksReview.removeBookmarksOnWrapUp'], true);
+  assert.equal(t.last('wrapUpInfo').removeBookmarks, true);
+
+  await t.send({ type: 'exportArchive', remove: 'closed' });
+  const done = t.last('archived');
+  assert.equal(done.removedBookmarks, 2, 'the resolved note\'s bookmark and the one without a note');
+  const left = JSON.parse(fs.readFileSync(bookmarksFile, 'utf8'));
+  const leftIds = Object.values(left.Value).flat().map((b) => b.Id);
+  assert.deepEqual(leftIds, [BOOKMARK], 'the open note keeps its bookmark');
+  const archived = JSON.parse(unzip(fs.readFileSync(done.file))['studio-bookmarks.json'].toString());
+  assert.equal(Object.values(archived.Value).flat().length, 3, 'the archive has all bookmarks from before');
+});

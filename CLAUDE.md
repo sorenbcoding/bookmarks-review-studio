@@ -26,6 +26,11 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 
 ## Constraints (verified in Studio, see `research/`)
 - **Treat `.project/bookmarks.json` as Studio's file: read only.**
+  - **The one exception** is wrapping up a review with `bookmarksReview.removeBookmarksOnWrapUp` on (default off). Then `BookmarkStore.removeAllExcept` runs `removeBookmarks` in `src/core/bookmarks.js`, after the archive is written:
+    - It keeps the bookmarks of notes that stay, and transient ones.
+    - It drops workflows left empty.
+    - It writes Studio's format: 2-space JSON, CRLF line endings, and a BOM only if the file had one.
+    - Verified in Studio: the Markers panel picks up the change while the project is open.
   - Format: `{ "Value": { "<project-relative .xaml path>": [ { IsEnabled, Annotation, Id, ActivityIdRef, ActivityId, ActivityName, IsTransient } ] } }`.
   - `Annotation` is `null` when a bookmark has no message.
   - Studio replaces the file (deletes it, then creates it again) rather than editing it, so watchers must debounce.
@@ -44,7 +49,8 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - There is no shared index file, to avoid merge conflicts.
   - Never delete a note automatically, except one that is empty, has status Open and has no replies. Deleting a note also deletes its replies and screenshots.
   - Notes without a bookmark (orphans) are deleted only by the user, one at a time or with **Delete all**.
-  - `bookmarksReview.hideNotesWithoutBookmark` only hides orphans; the files stay. If the host can't save the setting, `context.globalState` holds the choice and takes precedence.
+  - `bookmarksReview.hideNotesWithoutBookmark` only hides orphans; the files stay.
+  - **Settings** (`SETTINGS` in `src/extension.js`) are boolean user settings, default off, read and written through `setting()` and `setSetting()`. If the host can't save one, `context.globalState` holds the choice and takes precedence.
 - **Wrap up** (`exportArchive` in `src/extension.js`, pure logic in `src/core/archive.js`):
   - **The zip:**
     - It is written by `src/core/zip.js`, a small deflate writer with no dependencies, because Studio's Node version is unknown.

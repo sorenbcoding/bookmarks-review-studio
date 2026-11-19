@@ -125,3 +125,24 @@ test('reconcile: a bookmark that already has a note does not take an orphan', ()
   assert.equal(r.attached.get('b1').meta.noteId, 'b1');
   assert.deepEqual(r.orphans.map((n) => n.meta.noteId), ['old']);
 });
+
+test('removeBookmarks: keeps listed and transient bookmarks, drops empty workflows, Studio format', () => {
+  const { removeBookmarks } = require('../src/core/bookmarks');
+  const keep = new Set(['cb869369-1453-41dc-8a14-a4c93fb9250f']);
+  const { text, removed } = removeBookmarks(sample, keep);
+  assert.equal(removed, 2);
+  const ids = parseBookmarks(text).map((b) => b.id);
+  assert.deepEqual(ids, ['cb869369-1453-41dc-8a14-a4c93fb9250f']);
+  assert.equal(Object.keys(JSON.parse(text).Value).length, 1, 'workflow without bookmarks dropped');
+  assert.ok(text.includes('\r\n  "Value": {\r\n'), '2-space indent, CRLF');
+  assert.ok(!/[^\r]\n/.test(text), 'no bare LF');
+
+  const bom = '﻿' + JSON.stringify({ Value: { 'a.xaml': [{ Id: 'x', IsTransient: true }, { Id: 'y' }] } });
+  const out = removeBookmarks(bom, new Set());
+  assert.equal(out.removed, 1);
+  assert.ok(out.text.startsWith('﻿'), 'BOM kept');
+  assert.deepEqual(JSON.parse(out.text.slice(1)).Value['a.xaml'], [{ Id: 'x', IsTransient: true }]);
+
+  const none = removeBookmarks(sample, new Set(parseBookmarks(sample).map((b) => b.id)));
+  assert.deepEqual(none, { text: sample, removed: 0 }, 'nothing to remove: file text unchanged');
+});

@@ -21,6 +21,8 @@ const NOTE_ASSETS = '../assets/';
 const REPLY_ASSETS = '../../assets/';
 const CONFIG = 'bookmarksReview';
 const HIDE_ORPHANS = 'hideNotesWithoutBookmark';
+const REMOVE_BOOKMARKS = 'removeBookmarksOnWrapUp';
+const SETTINGS = [HIDE_ORPHANS, REMOVE_BOOKMARKS];
 const ARCHIVE_FOLDER = 'archiveFolder';
 const RENDER_TIMEOUT_MS = 30000;
 
@@ -95,6 +97,7 @@ class ReviewController {
       }),
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (e.affectsConfiguration(`${CONFIG}.${HIDE_ORPHANS}`)) this.postState();
+        if (e.affectsConfiguration(`${CONFIG}.${REMOVE_BOOKMARKS}`)) this.postWrapUpInfo();
       })
     );
     await this.refresh();
@@ -223,7 +226,7 @@ class ReviewController {
       author: this.author,
       activeWorkflow: this.activeWorkflow ?? null,
       workflows: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, bookmarks]) => ({ file, bookmarks })),
-      hideOrphans: this.hideOrphans,
+      hideOrphans: this.setting(HIDE_ORPHANS),
       orphans: this.orphans.map((n) => ({
         noteId: n.meta.noteId,
         workflow: n.meta.workflow,
@@ -290,7 +293,12 @@ class ReviewController {
         if (this.lastArchive) await opener.revealInExplorer(this.lastArchive);
         break;
       case 'setHideOrphans':
-        await this.setHideOrphans(msg.value === true);
+        await this.setSetting(HIDE_ORPHANS, msg.value === true);
+        this.postState();
+        break;
+      case 'setRemoveBookmarks':
+        await this.setSetting(REMOVE_BOOKMARKS, msg.value === true);
+        this.postWrapUpInfo();
         break;
       case 'openWorkflow':
         await this.openWorkflow(msg.file);
@@ -484,23 +492,24 @@ class ReviewController {
   }
 
   /**
-   * Whether notes without a bookmark are hidden from the panel (the files are kept).
-   * The user setting is the source; extension storage is the fallback if the host can't save settings.
+   * A boolean user setting (default off). The user setting is the source; extension storage is the
+   * fallback, and takes precedence, if the host couldn't save the setting.
    */
-  get hideOrphans() {
-    const fallback = this.context.globalState?.get(HIDE_ORPHANS);
-    return fallback ?? vscode.workspace.getConfiguration(CONFIG).get(HIDE_ORPHANS, false);
+  setting(key) {
+    if (!SETTINGS.includes(key)) return false;
+    const fallback = this.context.globalState?.get(key);
+    return fallback ?? vscode.workspace.getConfiguration(CONFIG).get(key, false);
   }
 
-  async setHideOrphans(value) {
+  async setSetting(key, value) {
+    if (!SETTINGS.includes(key)) return;
     try {
-      await vscode.workspace.getConfiguration(CONFIG).update(HIDE_ORPHANS, value, vscode.ConfigurationTarget.Global);
-      await this.context.globalState?.update(HIDE_ORPHANS, undefined);
+      await vscode.workspace.getConfiguration(CONFIG).update(key, value, vscode.ConfigurationTarget.Global);
+      await this.context.globalState?.update(key, undefined);
     } catch (err) {
-      log.appendLine(`Could not save the setting ${CONFIG}.${HIDE_ORPHANS}, kept in extension storage: ${err?.message ?? err}`);
-      await this.context.globalState?.update(HIDE_ORPHANS, value);
+      log.appendLine(`Could not save the setting ${CONFIG}.${key}, kept in extension storage: ${err?.message ?? err}`);
+      await this.context.globalState?.update(key, value);
     }
-    this.postState();
   }
 
   // ---- Wrap up: export the review to a zip and remove notes from the project ----
@@ -514,7 +523,7 @@ class ReviewController {
   }
 
   postWrapUpInfo() {
-    this.post({ type: 'wrapUpInfo', folder: this.archiveFolder });
+    this.post({ type: 'wrapUpInfo', folder: this.archiveFolder, removeBookmarks: this.setting(REMOVE_BOOKMARKS) });
   }
 
   async chooseArchiveFolder() {
@@ -611,7 +620,18 @@ class ReviewController {
         for (const id of ids) await this.reviewStore.deleteNote(id);
       });
       if (ids.length) log.appendLine(`Removed ${ids.length} notes after the export`);
-      this.post({ type: 'archived', file: target, removed: ids.length, kept: notes.length - ids.length });
+
+      // Optionally clear Studio's bookmarks too, keeping those whose note stays in the project.
+      let removedBookmarks = 0;
+      if (this.setting(REMOVE_BOOKMARKS)) {
+        const removedIds = new Set(ids);
+        const keep = new Set([...this.attached].filter(([, note]) => !removedIds.has(note.meta.noteId)).map(([bookmarkId]) => bookmarkId));
+        await this.enqueue(async () => {
+          removedBookmarks = await this.bookmarkStore.removeAllExcept(keep);
+        });
+        if (removedBookmarks) log.appendLine(`Removed ${removedBookmarks} bookmarks from .project/bookmarks.json`);
+      }
+      this.post({ type: 'archived', file: target, removed: ids.length, kept: notes.length - ids.length, removedBookmarks });
       await this.refresh();
     } catch (err) {
       log.appendLine(`Export failed: ${err?.stack ?? err}`);

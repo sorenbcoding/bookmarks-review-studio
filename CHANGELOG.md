@@ -23,6 +23,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 - **Wrap up review…** exports all notes to a zip archive. It can then remove the resolved and won't fix notes, or all notes, from the project. ([#9](https://github.com/sorenbcoding/bookmarks-review-studio/issues/9))
   - The archive holds `report.html`, a single page with the screenshots embedded, plus `summary.md`, the `.review/` files and Studio's bookmarks.
+- **Also remove Studio's bookmarks** when wrapping up a review. It is the setting `bookmarksReview.removeBookmarksOnWrapUp`, default off. ([#11](https://github.com/sorenbcoding/bookmarks-review-studio/issues/11))
+  - Bookmarks whose note stays in the project are kept.
+  - The archive keeps a copy of all bookmarks.
 
 ### Fixed
 - **Clicking a note without a bookmark** opens it. Before, nothing happened. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))

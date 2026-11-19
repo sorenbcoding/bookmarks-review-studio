@@ -73,6 +73,9 @@ What this means for the UI:
 ## Wrapping up a review
 - **Wrap up review…** exports the review to a zip archive, then removes notes from the project. The user chooses which each time: resolved and won't fix, all, or none.
 - **Contents:** `report.html`, a page that opens in any browser with the screenshots embedded, plus `summary.md`, the `.review/` files (unzip to restore) and a copy of Studio's bookmarks.
+- **Optionally, Studio's bookmarks are removed too.** This is the setting `removeBookmarksOnWrapUp`, default off, and the only time the extension writes `.project/bookmarks.json`.
+  - Bookmarks of notes that stay in the project are kept, so open notes keep their link for the next round.
+  - The file is written in Studio's format (2-space JSON, CRLF line endings).
 - **Git keeps the history.** Removing the notes is a normal change to commit, so the history keeps every note too.
 - **Rendering:** the extension host has no Markdown renderer, and Toast UI's parser ships only inside the editor bundle. So the panel renders the note and reply bodies for `report.html`, and the result matches the read view.
 

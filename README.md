@@ -63,7 +63,10 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
    - resolved and won't fix notes (open notes stay for the next round);
    - all notes;
    - nothing.
-3. Click **Export archive**, or **Export and remove…** and confirm.
+3. Optionally tick **Also remove Studio's bookmarks**. This is the setting `bookmarksReview.removeBookmarksOnWrapUp`, default off.
+   - The bookmarks are removed from `.project/bookmarks.json` after the archive is saved.
+   - Bookmarks whose note stays in the project are kept.
+4. Click **Export archive**, or **Export and remove…** and confirm.
 
 The archive is `<project>-review-<yyyy-mm-dd-hhmm>.zip`. It contains:
 - `report.html`: every note grouped by workflow, with its status, author, Studio message, replies and screenshots, in one page for any browser;
@@ -71,7 +74,7 @@ The archive is `<project>-review-<yyyy-mm-dd-hhmm>.zip`. It contains:
 - `.review/`: the note files as they were. Unzip it into a project to restore the notes;
 - `studio-bookmarks.json`: Studio's bookmarks at the time.
 
-Notes are removed only after the archive is saved. Studio's bookmarks are not changed. Commit the removal of the `.review/` files to finish the review in Git.
+Notes are removed only after the archive is saved. Studio's bookmarks are changed only when you tick the option above. Commit the removal of the `.review/` files to finish the review in Git.
 
 ### Stored files
 ```
