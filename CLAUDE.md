@@ -45,7 +45,8 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - Never delete a note automatically, except one that is empty, has status Open and has no replies. Deleting a note also deletes its replies and screenshots.
 - **Note view:**
   - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.
-  - A screenshot click calls `vscode.env.openExternal` on the file. `openImage` accepts only `<noteId>/<image file>` under `.review/assets/`.
+  - A screenshot click opens the file in its default Windows app (`src/openFile.js`: `Invoke-Item -LiteralPath` through `powershell.exe`, path passed in an environment variable). `vscode.env.openExternal` did not open local files in Studio, so it is only the fallback.
+  - `openImage` accepts only `<noteId>/<image file>` under `.review/assets/`, and builds the path from the assets folder, never from the URL.
 - **What the Studio extension host can and can't do:**
   - Only sidebar webview views work. There's no command palette, and no commands for bookmarks or the designer.
   - Studio exposes open workflows as XML text editors. `onDidChangeActiveTextEditor` reports workflow tab switches, and `vscode.open` brings a workflow to the front.

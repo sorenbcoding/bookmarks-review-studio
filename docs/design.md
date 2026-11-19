@@ -64,6 +64,7 @@ The probe extensions in `research/` verified this in Studio.
 | Bring a workflow to the front | `vscode.open` / `showTextDocument` |
 | Which activity or bookmark is selected or focused | Not reported |
 | Select an activity from the extension | Not possible. The designer ignores editor selections |
+| Open a local file with `vscode.env.openExternal` | Did nothing for a screenshot. The extension starts the default app through the shell instead |
 
 What this means for the UI:
 - The panel follows the workflow in front, and offers "Show in Studio" to bring a workflow forward.
