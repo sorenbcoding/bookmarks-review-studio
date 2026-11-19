@@ -30,7 +30,7 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
     - It keeps the bookmarks of notes that stay, and transient ones.
     - It drops workflows left empty.
     - It writes Studio's format: 2-space JSON, CRLF line endings, and a BOM only if the file had one.
-    - It hasn't been verified yet whether Studio picks up the change while the project is open.
+    - Verified in Studio: the Markers panel picks up the change while the project is open.
   - Format: `{ "Value": { "<project-relative .xaml path>": [ { IsEnabled, Annotation, Id, ActivityIdRef, ActivityId, ActivityName, IsTransient } ] } }`.
   - `Annotation` is `null` when a bookmark has no message.
   - Studio replaces the file (deletes it, then creates it again) rather than editing it, so watchers must debounce.
