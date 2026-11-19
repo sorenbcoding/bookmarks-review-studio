@@ -15,6 +15,7 @@ Module._resolveFilename = function (request, ...rest) {
 const vscode = require('vscode');
 const { activate } = require('../src/extension');
 const opener = require('../src/openFile');
+const stores = require('../src/stores');
 const { unzip } = require('./helpers/unzip');
 
 // Never start a real image viewer from the tests.
@@ -40,7 +41,16 @@ async function setup() {
   vscode.mock.folderDeleteFails = false;
   const stored = new Map();
   const globalState = { get: (k) => stored.get(k), update: async (k, v) => void (v === undefined ? stored.delete(k) : stored.set(k, v)) };
-  const context = { subscriptions: [], globalState, extensionUri: vscode.Uri.file(path.join(__dirname, '..')) };
+  const wsStored = new Map();
+  const workspaceState = { get: (k, d) => (wsStored.has(k) ? wsStored.get(k) : d), update: async (k, v) => void wsStored.set(k, v) };
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-storage-'));
+  const context = {
+    subscriptions: [],
+    globalState,
+    workspaceState,
+    globalStorageUri: vscode.Uri.file(storage),
+    extensionUri: vscode.Uri.file(path.join(__dirname, '..')),
+  };
   activate(context);
   const controller = vscode.mock.providers.get('bookmarksReview.view');
   await controller.ready;
@@ -75,7 +85,7 @@ async function setup() {
   };
   const last = (type) => posted.filter((m) => m.type === type).at(-1);
   const file = (...p) => path.join(root, '.review', ...p);
-  return { root, controller, posted, send, last, file, globalState, hooks };
+  return { root, controller, posted, send, last, file, globalState, workspaceState, storage, hooks };
 }
 
 async function pasteImage(t) {
@@ -499,4 +509,50 @@ test('deleting an orphaned note removes its screenshots even if the host cannot 
   assert.ok(!fs.existsSync(t.file('assets', BOOKMARK)), 'screenshot folder removed');
   assert.ok(!fs.existsSync(t.file('replies', BOOKMARK)), 'reply folder removed');
   assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)), 'note removed');
+});
+
+test('locks: the panel shows copies, never the project screenshot files', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  const cache = path.join(t.storage, 'image-cache');
+  assert.ok(shot.includes('image-cache'), `pasted screenshot shown from the cache: ${shot}`);
+  assert.ok(!shot.includes('/.review/'), 'not from .review/');
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  assert.match(fs.readFileSync(t.file('notes', `${BOOKMARK}.md`), 'utf8'), /\]\(\.\.\/assets\//, 'note stores the relative path');
+
+  // A note opened later (e.g. after a pull, cache empty) gets its screenshots copied into the cache.
+  fs.rmSync(cache, { recursive: true, force: true });
+  await t.send({ type: 'open', bookmarkId: BOOKMARK });
+  const body = t.last('note').body;
+  const src = /\]\(([^)]+)\)/.exec(body)[1];
+  assert.ok(src.includes('image-cache'));
+  const cachedFile = src.replace('https://wv/', '');
+  assert.ok(fs.existsSync(cachedFile), 'copy exists for the panel');
+});
+
+test('locks: a screenshot locked by another program does not block deleting the note', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  await deleteBookmark(t, BOOKMARK);
+  const realRm = stores.fileOps.rm;
+  stores.fileOps.rm = async (p, opts) => {
+    if (p.includes(`assets${path.sep}${BOOKMARK}`)) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+    return realRm(p, opts);
+  };
+  vscode.mock.messages = [];
+  try {
+    await t.send({ type: 'deleteNote', noteId: BOOKMARK });
+    assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)), 'the note is deleted anyway');
+    assert.ok(fs.existsSync(t.file('assets', BOOKMARK)), 'the locked folder is still there');
+    assert.equal(t.last('state').orphans.length, 0);
+    assert.ok(vscode.mock.messages.some(([kind, m]) => kind === 'info' && /in use by another program/.test(m)));
+    assert.deepEqual(t.workspaceState.get('pendingRemovals'), [t.file('assets', BOOKMARK)]);
+  } finally {
+    stores.fileOps.rm = realRm;
+  }
+  // Released: the next refresh removes it and forgets it.
+  await t.controller.refresh();
+  assert.ok(!fs.existsSync(t.file('assets', BOOKMARK)), 'removed once released');
+  assert.deepEqual(t.workspaceState.get('pendingRemovals'), []);
 });

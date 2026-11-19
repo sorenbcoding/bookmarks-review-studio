@@ -5,7 +5,8 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const os = require('os');
 const path = require('path');
-const { BookmarkStore, ReviewStore } = require('./stores');
+const crypto = require('crypto');
+const { BookmarkStore, ReviewStore, remove } = require('./stores');
 const { reconcile } = require('./core/reconcile');
 const { STATUSES, isValidId, isValidReplyId, newReplyId, isAssetReferenced, countImages, excerpt } = require('./core/noteFile');
 const { authorName } = require('./git');
@@ -28,6 +29,7 @@ const RENDER_TIMEOUT_MS = 30000;
 // A pasted screenshot is written before the editor inserts its link; until a saved text links it
 // (or this time passes), cleanup leaves it alone, so an autosave already in flight can't delete it.
 const FRESH_ASSET_MS = 10 * 60 * 1000;
+const PENDING_REMOVALS = 'pendingRemovals';
 
 /** Valid note ids from a webview message, as a Set. */
 const idSet = (ids) => new Set(Array.isArray(ids) ? ids.filter(isValidId) : []);
@@ -106,6 +108,15 @@ class ReviewController {
     this.bookmarkStore = new BookmarkStore(this.root);
     this.reviewStore = new ReviewStore(this.root);
     this.author = await authorName(this.root.fsPath);
+    // The panel shows screenshots from copies here, never from .review/: Studio's web view keeps the files
+    // it shows open, which stopped screenshots from being deleted.
+    const storage = this.context.globalStorageUri?.fsPath ?? path.join(os.tmpdir(), 'sorenb-bookmarks-review');
+    const project = crypto.createHash('sha1').update(this.root.fsPath.toLowerCase()).digest('hex').slice(0, 12);
+    this.imageCache = vscode.Uri.file(path.join(storage, 'image-cache', project));
+    await remove(this.imageCache); // best effort: copies still shown elsewhere stay until the next start
+    await fsp.mkdir(path.join(this.imageCache.fsPath, 'assets'), { recursive: true });
+    // Files a delete couldn't remove (locked by another program) are retried on every refresh.
+    this.pendingRemovals = new Set(this.context.workspaceState?.get(PENDING_REMOVALS, []) ?? []);
     // Studio exposes open workflows as text editors: the active one is the workflow tab in front.
     // It reports workflow switches (incl. Focus on a bookmark in another workflow), but not the selected activity.
     this.activeWorkflow = this.toProjectPath(vscode.window.activeTextEditor?.document.uri);
@@ -161,6 +172,7 @@ class ReviewController {
 
   refresh() {
     return this.enqueue(async () => {
+      if (this.pendingRemovals.size) await this.retryPendingRemovals();
       this.bookmarks = await this.bookmarkStore.load();
       const notes = await this.reviewStore.loadAll();
       const { attached, updates, orphans } = reconcile(this.bookmarks, notes);
@@ -206,7 +218,7 @@ class ReviewController {
     const dist = vscode.Uri.joinPath(this.context.extensionUri, 'dist');
     view.webview.options = {
       enableScripts: true,
-      localResourceRoots: this.root ? [dist, this.reviewStore.reviewDir] : [dist],
+      localResourceRoots: this.root ? [dist, this.imageCache] : [dist],
     };
     view.webview.onDidReceiveMessage((msg) => this.onMessage(msg));
     view.webview.html = this.html(view.webview);
@@ -216,9 +228,64 @@ class ReviewController {
     this.view?.webview.postMessage(msg);
   }
 
-  /** Webview URL prefix of .review/, used to show screenshots while notes store relative paths. */
+  /**
+   * Webview URL prefix that stands in for .review/ while notes store relative paths. It points at the image
+   * cache, which mirrors .review/assets/, so Studio never holds the project's screenshot files open.
+   */
   get assetBase() {
-    return this.view ? this.view.webview.asWebviewUri(this.reviewStore.reviewDir).toString() : '';
+    return this.view ? this.view.webview.asWebviewUri(this.imageCache).toString() : '';
+  }
+
+  /** Copies a note's screenshots into the image cache, so the panel can show them. */
+  async cacheImages(noteId) {
+    const from = path.join(this.reviewStore.assetsDir.fsPath, noteId);
+    const to = path.join(this.imageCache.fsPath, 'assets', noteId);
+    let names;
+    try {
+      names = await fsp.readdir(from);
+    } catch {
+      return;
+    }
+    await fsp.mkdir(to, { recursive: true });
+    for (const name of names) {
+      if (!IMAGE_FILE.test(name)) continue;
+      const target = path.join(to, name);
+      try {
+        const [a, b] = await Promise.all([fsp.stat(path.join(from, name)), fsp.stat(target).catch(() => null)]);
+        if (!b || a.size !== b.size || a.mtimeMs > b.mtimeMs) await fsp.copyFile(path.join(from, name), target);
+      } catch (err) {
+        log.appendLine(`Could not cache ${name}: ${err?.message ?? err}`);
+      }
+    }
+  }
+
+  // ---- Deleting: files another program holds open are retried later instead of blocking the delete ----
+
+  /** Deletes a note's files; whatever is locked is retried later. */
+  async removeNoteFiles(noteId) {
+    this.trackLeftovers(await this.reviewStore.deleteNote(noteId));
+  }
+
+  trackLeftovers(paths) {
+    if (!paths.length) return;
+    for (const p of paths) this.pendingRemovals.add(p);
+    this.context.workspaceState?.update(PENDING_REMOVALS, [...this.pendingRemovals]);
+    log.appendLine(`Could not delete yet (in use by another program), will retry: ${paths.join(', ')}`);
+    if (!this.leftoverNoticeShown) {
+      this.leftoverNoticeShown = true;
+      setTimeout(() => (this.leftoverNoticeShown = false), 2000);
+      vscode.window.showInformationMessage(
+        'Bookmarks Review: deleted. Some screenshot files are in use by another program, for example an image viewer. They are removed automatically once released, at the latest the next time the project opens.'
+      );
+    }
+  }
+
+  async retryPendingRemovals() {
+    const left = await this.reviewStore.removePaths([...this.pendingRemovals]);
+    if (left.length === this.pendingRemovals.size) return;
+    log.appendLine(`Removed ${this.pendingRemovals.size - left.length} files that were in use earlier`);
+    this.pendingRemovals = new Set(left);
+    this.context.workspaceState?.update(PENDING_REMOVALS, left);
   }
 
   toWebviewBody(body, prefix = NOTE_ASSETS) {
@@ -344,6 +411,7 @@ class ReviewController {
     const known = bookmark ? this.attached.get(bookmark.id) : this.notesById.get(noteId);
     const note = known ? await this.reviewStore.readNote(known.meta.noteId) : null;
     if (!bookmark && !note) return this.postState();
+    await this.cacheImages(note?.meta.noteId ?? bookmark.id);
     const replies = note ? await this.reviewStore.loadReplies(note.meta.noteId) : [];
     this.post({
       type: 'note',
@@ -393,7 +461,7 @@ class ReviewController {
 
     // An empty, open note on a live bookmark, without replies, is the same as no note.
     if (!markdown && newStatus === 'open' && !hasReplies && (bookmark || !existing)) {
-      if (existing) await this.reviewStore.deleteNote(noteId);
+      if (existing) await this.removeNoteFiles(noteId);
       else await this.cleanupAssets(noteId);
       this.post({ type: 'saved', noteId, meta: null, removed: Boolean(existing) });
       return this.refreshLater();
@@ -511,15 +579,20 @@ class ReviewController {
     }
     const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
     const uri = await this.reviewStore.saveImage(noteId, buffer, ext);
-    this.freshAssets.set(`${noteId}/${path.basename(uri.fsPath)}`, Date.now());
+    const name = path.basename(uri.fsPath);
+    this.freshAssets.set(`${noteId}/${name}`, Date.now());
     log.appendLine(`Saved screenshot ${uri.fsPath}`);
-    this.post({ type: 'imageSaved', requestId, src: this.view.webview.asWebviewUri(uri).toString() });
+    // The panel shows the cached copy; the note links the project file through the relative path.
+    const cached = vscode.Uri.joinPath(this.imageCache, 'assets', noteId, name);
+    await fsp.mkdir(path.dirname(cached.fsPath), { recursive: true });
+    await fsp.writeFile(cached.fsPath, buffer);
+    this.post({ type: 'imageSaved', requestId, src: this.view.webview.asWebviewUri(cached).toString() });
   }
 
   /** Deletes a note with its replies and screenshots. The panel asks for confirmation first. */
   async deleteNote(noteId) {
     if (!isValidId(noteId)) return;
-    await this.enqueue(() => this.reviewStore.deleteNote(noteId));
+    await this.enqueue(() => this.removeNoteFiles(noteId));
     log.appendLine(`Deleted note ${noteId}`);
     this.post({ type: 'deleted', noteId });
     await this.refresh();
@@ -530,7 +603,7 @@ class ReviewController {
     await this.refresh();
     const ids = this.orphans.map((n) => n.meta.noteId).filter((id) => noteIds.has(id));
     await this.enqueue(async () => {
-      for (const id of ids) await this.reviewStore.deleteNote(id);
+      for (const id of ids) await this.removeNoteFiles(id);
     });
     log.appendLine(`Deleted ${ids.length} notes without a bookmark`);
     for (const noteId of ids) this.post({ type: 'deleted', noteId });
@@ -574,11 +647,11 @@ class ReviewController {
     let removedBookmarks = 0;
     let strays = 0;
     await this.enqueue(async () => {
-      for (const id of ids) await this.reviewStore.deleteNote(id);
+      for (const id of ids) await this.removeNoteFiles(id);
       // Screenshots and replies that belong to no note (e.g. pasted into a note that was never saved).
       const files = await this.reviewStore.strayFiles();
       strays = files.length;
-      await this.reviewStore.removeStrays(files);
+      this.trackLeftovers(await this.reviewStore.removeStrays(files));
       this.freshAssets.clear(); // nothing is being edited while the Settings view is open
       if (withBookmarks && bookmarkIds.size) removedBookmarks = await this.bookmarkStore.removeOnly(bookmarkIds);
     });
@@ -700,7 +773,7 @@ class ReviewController {
       await this.enqueue(async () => {
         for (const id of candidates) {
           if (sameFiles(await this.reviewStore.noteFiles(id), snapshotOf(data, id))) {
-            await this.reviewStore.deleteNote(id);
+            await this.removeNoteFiles(id);
             ids.push(id);
           } else {
             changed++;
@@ -714,7 +787,7 @@ class ReviewController {
           const archived = data.get(f.path);
           if (!fresh && archived && archived.equals(Buffer.from(await vscode.workspace.fs.readFile(f.uri)))) strays.push(f);
         }
-        await this.reviewStore.removeStrays(strays);
+        this.trackLeftovers(await this.reviewStore.removeStrays(strays));
         if (strays.length) log.appendLine(`Removed ${strays.length} archived files that belonged to no note`);
       });
       if (ids.length) log.appendLine(`Removed ${ids.length} notes after the export`);

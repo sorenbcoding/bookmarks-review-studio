@@ -9,23 +9,19 @@ const fs = vscode.workspace.fs;
 const decode = (bytes) => Buffer.from(bytes).toString('utf8');
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Node's file system, replaceable in tests (e.g. to simulate a file locked by another program).
+const fileOps = { rm: (p, opts) => nodeFs.promises.rm(p, opts) };
+
 /**
- * Deletes a file or folder (with its contents). Studio's file API is tried first; if the path still exists
- * afterwards, Node's own delete runs with retries. A path that can't be deleted (for example a screenshot
- * locked by another program) throws, unless `bestEffort` is set. A missing path counts as deleted.
+ * Deletes a file or folder with its contents, using Node directly: Studio's file API was slow and failed
+ * silently on folders. A missing path counts as deleted.
+ * @returns {Promise<boolean>} false if (part of) the path is still there, e.g. a file locked by another program
  */
-async function remove(uri, { bestEffort = false } = {}) {
+async function remove(uri) {
   try {
-    await fs.delete(uri, { recursive: true, useTrash: false });
+    await fileOps.rm(uri.fsPath, { recursive: true, force: true, maxRetries: 2, retryDelay: 100 });
   } catch {
-    // checked below
-  }
-  if (!nodeFs.existsSync(uri.fsPath)) return true;
-  try {
-    await nodeFs.promises.rm(uri.fsPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
-  } catch (err) {
-    if (bestEffort) return false;
-    throw new Error(`Could not delete ${uri.fsPath} — ${err?.code === 'EBUSY' || err?.code === 'EPERM' ? 'the file is in use by another program' : err?.message ?? err}. Close the program and try again.`);
+    // reported through the return value
   }
   return !nodeFs.existsSync(uri.fsPath);
 }
@@ -179,14 +175,30 @@ class ReviewStore {
     await fs.writeFile(uri, Buffer.from(text, 'utf8'));
   }
 
-  /** Deletes a note with its replies and screenshots. */
+  /**
+   * Deletes a note with its replies and screenshots.
+   * @returns {Promise<string[]>} paths that could not be deleted yet (e.g. locked by another program)
+   */
   async deleteNote(noteId) {
-    if (!isValidId(noteId)) return;
+    if (!isValidId(noteId)) return [];
     this.lastWritten.delete(this.noteUri(noteId).fsPath);
-    // Screenshots and replies first: if one can't be deleted, the note stays and the user can retry.
-    await remove(vscode.Uri.joinPath(this.assetsDir, noteId));
-    await remove(vscode.Uri.joinPath(this.repliesDir, noteId));
-    await remove(this.noteUri(noteId));
+    const left = [];
+    for (const uri of [vscode.Uri.joinPath(this.assetsDir, noteId), vscode.Uri.joinPath(this.repliesDir, noteId), this.noteUri(noteId)]) {
+      if (!(await remove(uri))) left.push(uri.fsPath);
+    }
+    return left;
+  }
+
+  /** Retries deleting paths under .review/. @returns {Promise<string[]>} the paths still there */
+  async removePaths(paths) {
+    const left = [];
+    for (const p of paths) {
+      const relative = require('path').relative(this.reviewDir.fsPath, p);
+      if (!relative || relative.startsWith('..') || require('path').isAbsolute(relative)) continue; // only inside .review/
+      if (!(await remove(vscode.Uri.file(p)))) left.push(p);
+    }
+    await this.pruneEmptyDirs(this.reviewDir);
+    return left;
   }
 
   // ---- replies: .review/replies/<noteId>/<replyId>.md, one file per reply (append-only, merge-friendly)
@@ -239,7 +251,7 @@ class ReviewStore {
     await remove(uri);
     const dir = vscode.Uri.joinPath(this.repliesDir, noteId);
     const left = await fs.readDirectory(dir).then((e) => e.length, () => 0);
-    if (left === 0) await remove(dir, { bestEffort: true });
+    if (left === 0) await remove(dir);
   }
 
   /** Number of replies per note id, for the list. */
@@ -304,10 +316,15 @@ class ReviewStore {
     return strays;
   }
 
-  /** Deletes the given stray files, then empty folders under .review/ and .review/ itself if empty. */
+  /**
+   * Deletes the given stray files, then empty folders under .review/ and .review/ itself if empty.
+   * @returns {Promise<string[]>} paths that could not be deleted yet
+   */
   async removeStrays(files) {
-    for (const f of files) await remove(f.uri);
+    const left = [];
+    for (const f of files) if (!(await remove(f.uri))) left.push(f.uri.fsPath);
     await this.pruneEmptyDirs(this.reviewDir);
+    return left;
   }
 
   /** Removes empty folders below `dir` (and `dir` itself when it ends up empty). @returns {Promise<boolean>} emptied */
@@ -324,7 +341,7 @@ class ReviewStore {
       left++;
     }
     if (left) return false;
-    return remove(dir, { bestEffort: true });
+    return remove(dir);
   }
 
   /** Deletes screenshots of a note that no text references, except the file names in `keep`. */
@@ -339,12 +356,12 @@ class ReviewStore {
     let kept = 0;
     for (const [name, type] of entries) {
       if (type === vscode.FileType.File && !keep.has(name) && !isAssetReferenced(noteId, name, texts)) {
-        await remove(vscode.Uri.joinPath(dir, name), { bestEffort: true });
+        await remove(vscode.Uri.joinPath(dir, name));
       } else {
         kept++;
       }
     }
-    if (kept === 0) await remove(dir, { bestEffort: true });
+    if (kept === 0) await remove(dir);
   }
 
   /** Watches note and reply files; onChange gets the changed file's URI. */
@@ -360,4 +377,4 @@ class ReviewStore {
   }
 }
 
-module.exports = { BookmarkStore, ReviewStore };
+module.exports = { fileOps, remove, BookmarkStore, ReviewStore };
