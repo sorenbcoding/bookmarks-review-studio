@@ -35,9 +35,17 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - `ActivityId` is positional and is not used.
 - **Notes live in `.review/`:**
   - Each note is `.review/notes/<noteId>.md`, with JSON-string front matter. `noteId` is the bookmark id at creation and never changes.
-  - Screenshots go in `.review/assets/<noteId>/`.
+  - **Replies** are separate files, `.review/replies/<noteId>/<yyyymmddThhmmssZ>-<rand>.md`, using the same front matter format (`author`, `created`, `updated`).
+    - They are append-only, so a note edit and a reply never conflict in Git.
+    - Only the author (matched on `git config user.name`) may edit or delete a reply. The controller enforces this, not just the UI.
+  - Screenshots of a note and its replies go in `.review/assets/<noteId>/`.
+    - Links are relative: `../assets/` from notes, `../../assets/` from replies.
+    - A screenshot is deleted only when neither the note nor any reply references it (`isAssetReferenced`).
   - There is no shared index file, to avoid merge conflicts.
-  - Never delete a note automatically, except one that is empty with status Open.
+  - Never delete a note automatically, except one that is empty, has status Open and has no replies. Deleting a note also deletes its replies and screenshots.
+- **Note view:**
+  - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.
+  - A screenshot click calls `vscode.env.openExternal` on the file. `openImage` accepts only `<noteId>/<image file>` under `.review/assets/`.
 - **What the Studio extension host can and can't do:**
   - Only sidebar webview views work. There's no command palette, and no commands for bookmarks or the designer.
   - Studio exposes open workflows as XML text editors. `onDidChangeActiveTextEditor` reports workflow tab switches, and `vscode.open` brings a workflow to the front.
@@ -52,7 +60,7 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 - Changes follow the `sorenb-dev-cycle` skill. There is **no CI** yet: rely on local `npm test` plus `npm run build`, and say so in PRs.
 
 ## Commands
-- `npm test`: unit tests.
+- `npm test`: unit tests for `src/core/`, plus controller tests (`test/controller.test.js`) that run the real controller against a temporary project on disk, with `vscode` replaced by `test/helpers/vscode-mock.js`.
 - `npm run build`: bundles the webview.
 - `npm run package`: test, build and create the `.vsix`.
 - Brand check: `python ~/.claude/skills/sorenb-brand/scripts/brand_check.py . --category extension`.
