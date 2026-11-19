@@ -3,9 +3,32 @@ const vscode = require('vscode');
 const { parseBookmarks, removeBookmarks } = require('./core/bookmarks');
 const { parseNote, serializeNote, isValidId, isValidReplyId, isAssetReferenced } = require('./core/noteFile');
 
+const nodeFs = require('fs');
+
 const fs = vscode.workspace.fs;
 const decode = (bytes) => Buffer.from(bytes).toString('utf8');
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Deletes a file or folder (with its contents). Studio's file API is tried first; if the path still exists
+ * afterwards, Node's own delete runs with retries. A path that can't be deleted (for example a screenshot
+ * locked by another program) throws, unless `bestEffort` is set. A missing path counts as deleted.
+ */
+async function remove(uri, { bestEffort = false } = {}) {
+  try {
+    await fs.delete(uri, { recursive: true, useTrash: false });
+  } catch {
+    // checked below
+  }
+  if (!nodeFs.existsSync(uri.fsPath)) return true;
+  try {
+    await nodeFs.promises.rm(uri.fsPath, { recursive: true, force: true, maxRetries: 3, retryDelay: 200 });
+  } catch (err) {
+    if (bestEffort) return false;
+    throw new Error(`Could not delete ${uri.fsPath} — ${err?.code === 'EBUSY' || err?.code === 'EPERM' ? 'the file is in use by another program' : err?.message ?? err}. Close the program and try again.`);
+  }
+  return !nodeFs.existsSync(uri.fsPath);
+}
 
 class BookmarkStore {
   constructor(root) {
@@ -160,9 +183,10 @@ class ReviewStore {
   async deleteNote(noteId) {
     if (!isValidId(noteId)) return;
     this.lastWritten.delete(this.noteUri(noteId).fsPath);
-    await fs.delete(this.noteUri(noteId)).then(undefined, () => {});
-    await fs.delete(vscode.Uri.joinPath(this.repliesDir, noteId), { recursive: true }).then(undefined, () => {});
-    await fs.delete(vscode.Uri.joinPath(this.assetsDir, noteId), { recursive: true }).then(undefined, () => {});
+    // Screenshots and replies first: if one can't be deleted, the note stays and the user can retry.
+    await remove(vscode.Uri.joinPath(this.assetsDir, noteId));
+    await remove(vscode.Uri.joinPath(this.repliesDir, noteId));
+    await remove(this.noteUri(noteId));
   }
 
   // ---- replies: .review/replies/<noteId>/<replyId>.md, one file per reply (append-only, merge-friendly)
@@ -212,10 +236,10 @@ class ReviewStore {
     if (!isValidId(noteId) || !isValidReplyId(replyId)) return;
     const uri = this.replyUri(noteId, replyId);
     this.lastWritten.delete(uri.fsPath);
-    await fs.delete(uri).then(undefined, () => {});
+    await remove(uri);
     const dir = vscode.Uri.joinPath(this.repliesDir, noteId);
     const left = await fs.readDirectory(dir).then((e) => e.length, () => 0);
-    if (left === 0) await fs.delete(dir, { recursive: true }).then(undefined, () => {});
+    if (left === 0) await remove(dir, { bestEffort: true });
   }
 
   /** Number of replies per note id, for the list. */
@@ -282,7 +306,7 @@ class ReviewStore {
 
   /** Deletes the given stray files, then empty folders under .review/ and .review/ itself if empty. */
   async removeStrays(files) {
-    for (const f of files) await fs.delete(f.uri).then(undefined, () => {});
+    for (const f of files) await remove(f.uri);
     await this.pruneEmptyDirs(this.reviewDir);
   }
 
@@ -300,8 +324,7 @@ class ReviewStore {
       left++;
     }
     if (left) return false;
-    await fs.delete(dir, { recursive: true }).then(undefined, () => {});
-    return true;
+    return remove(dir, { bestEffort: true });
   }
 
   /** Deletes screenshots of a note that no text references, except the file names in `keep`. */
@@ -316,12 +339,12 @@ class ReviewStore {
     let kept = 0;
     for (const [name, type] of entries) {
       if (type === vscode.FileType.File && !keep.has(name) && !isAssetReferenced(noteId, name, texts)) {
-        await fs.delete(vscode.Uri.joinPath(dir, name)).then(undefined, () => {});
+        await remove(vscode.Uri.joinPath(dir, name), { bestEffort: true });
       } else {
         kept++;
       }
     }
-    if (kept === 0) await fs.delete(dir, { recursive: true }).then(undefined, () => {});
+    if (kept === 0) await remove(dir, { bestEffort: true });
   }
 
   /** Watches note and reply files; onChange gets the changed file's URI. */

@@ -37,6 +37,7 @@ async function setup() {
   vscode.mock.opened = [];
   vscode.mock.settings = {};
   vscode.mock.settingsReadOnly = false;
+  vscode.mock.folderDeleteFails = false;
   const stored = new Map();
   const globalState = { get: (k) => stored.get(k), update: async (k, v) => void (v === undefined ? stored.delete(k) : stored.set(k, v)) };
   const context = { subscriptions: [], globalState, extensionUri: vscode.Uri.file(path.join(__dirname, '..')) };
@@ -481,4 +482,21 @@ test('strays: wrap-up removes archived strays, keeps a screenshot that was just 
   assert.ok(!fs.existsSync(t.file('assets', oldStray)), 'archived stray removed');
   assert.ok(fs.existsSync(t.file('assets', freshStray, freshFile)), 'just-pasted screenshot kept');
   assert.ok(!fs.existsSync(t.file('notes')), 'empty notes folder pruned');
+});
+
+test('deleting an orphaned note removes its screenshots even if the host cannot delete folders', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
+  await deleteBookmark(t, BOOKMARK);
+  vscode.mock.folderDeleteFails = true;
+  try {
+    await t.send({ type: 'deleteNote', noteId: BOOKMARK });
+  } finally {
+    vscode.mock.folderDeleteFails = false;
+  }
+  assert.ok(!fs.existsSync(t.file('assets', BOOKMARK)), 'screenshot folder removed');
+  assert.ok(!fs.existsSync(t.file('replies', BOOKMARK)), 'reply folder removed');
+  assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)), 'note removed');
 });
