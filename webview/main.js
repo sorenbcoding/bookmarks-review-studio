@@ -2,6 +2,7 @@
 import Editor from '@toast-ui/editor';
 import '@toast-ui/editor/dist/toastui-editor.css';
 import '@toast-ui/editor/dist/theme/toastui-editor-dark.css';
+import './sorenb-tokens.css';
 import './style.css';
 
 const vscode = acquireVsCodeApi();
@@ -51,6 +52,13 @@ function isDark() {
   const rgb = getComputedStyle(document.body).backgroundColor.match(/\d+/g)?.map(Number);
   return rgb ? (0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2]) / 255 < 0.5 : false;
 }
+
+// Brand tokens switch on [data-theme]; follow Studio's theme class, including live theme changes.
+function syncTheme() {
+  document.documentElement.dataset.theme = isDark() ? 'dark' : 'light';
+}
+syncTheme();
+new MutationObserver(syncTheme).observe(document.body, { attributes: true, attributeFilter: ['class'] });
 
 function formatTime(iso) {
   if (!iso) return '';
