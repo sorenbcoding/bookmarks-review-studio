@@ -36,6 +36,7 @@ UiPath doesn't document this file. Its format was confirmed from real samples an
   .project/bookmarks.json              Studio's file: read only, never extended
   .review/
     notes/<noteId>.md                  front matter (JSON-string values) + Markdown body
+    replies/<noteId>/<time>-<id>.md    one file per reply (author, created, updated) + Markdown body
     assets/<noteId>/<timestamp>.png    screenshots, linked as ../assets/<noteId>/…
 ```
 - **Note id:** `noteId` is the bookmark id at the time the note was created, and never changes. The front matter holds the current `bookmarkId` and hints for re-linking (`workflow`, `activityIdRef`, `activityName`), plus `status`, `author`, `created` and `updated`.
@@ -45,7 +46,8 @@ UiPath doesn't document this file. Its format was confirmed from real samples an
   2. If that fails, re-attach the note to a bookmark on the same workflow + `ActivityIdRef` that has no note yet. This covers a bookmark deleted and added again.
   3. If that fails too, the note is an orphan. It is shown separately and never deleted automatically.
 - **Hints stay current:** each refresh updates the hints, so renaming a workflow doesn't break step 2.
-- **Screenshots:** the editor shows them through webview URLs, and saving rewrites those to relative `../assets/` paths. Screenshots a note no longer references are deleted when it saves.
+- **Replies** are separate, append-only files, so a developer replying never conflicts in Git with a reviewer editing the note. Only the author can edit or delete a reply.
+- **Screenshots:** the editor shows them through webview URLs, and saving rewrites those to relative paths (`../assets/` from notes, `../../assets/` from replies). A screenshot is deleted only when neither the note nor any reply references it.
 
 ## What the Studio extension host allows
 The probe extensions in `research/` verified this in Studio.
@@ -62,13 +64,13 @@ The probe extensions in `research/` verified this in Studio.
 | Bring a workflow to the front | `vscode.open` / `showTextDocument` |
 | Which activity or bookmark is selected or focused | Not reported |
 | Select an activity from the extension | Not possible. The designer ignores editor selections |
+| Open a local file with `vscode.env.openExternal` | Did nothing for a screenshot. The extension starts the default app through the shell instead |
 
 What this means for the UI:
 - The panel follows the workflow in front, and offers "Show in Studio" to bring a workflow forward.
 - Focusing the exact activity stays with Studio's Markers panel.
 
 ## Next ideas
-- Reply threads inside a note.
 - Export a review summary as Markdown, for the PR description.
 - Filter the list by status.
 - Find out what `IsTransient` means. Such bookmarks are ignored for now.
