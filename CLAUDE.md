@@ -45,6 +45,17 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
   - Never delete a note automatically, except one that is empty, has status Open and has no replies. Deleting a note also deletes its replies and screenshots.
   - Notes without a bookmark (orphans) are deleted only by the user, one at a time or with **Delete all**.
   - `bookmarksReview.hideNotesWithoutBookmark` only hides orphans; the files stay. If the host can't save the setting, `context.globalState` holds the choice and takes precedence.
+- **Wrap up** (`exportArchive` in `src/extension.js`, pure logic in `src/core/archive.js`):
+  - **The zip:**
+    - It is written by `src/core/zip.js`, a small deflate writer with no dependencies, because Studio's Node version is unknown.
+    - It contains `summary.md`, `report.html`, `.review/**` and `studio-bookmarks.json`.
+    - It is saved in the folder from `globalState.archiveFolder`, default Documents. That folder is chosen through `showOpenDialog`, never through a path from the webview.
+  - **`report.html`:**
+    - Bodies are rendered by the panel's Toast UI viewer (`renderReport` / `reportRendered`), so they match the read view and are sanitized.
+    - Screenshots are embedded as data URIs.
+    - If the panel doesn't answer within 30 s, the bodies are shown as plain text.
+    - Its styles are `webview/report.css` with the brand tokens, bundled to `dist/report.css`.
+  - **Removal:** notes are removed only after the zip is written and its size checked. Modes are `closed` (resolved and won't fix), `all` and `none`.
 - **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
 - **Note view:**
   - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.
@@ -65,6 +76,6 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 
 ## Commands
 - `npm test`: unit tests for `src/core/`, plus controller tests (`test/controller.test.js`) that run the real controller against a temporary project on disk, with `vscode` replaced by `test/helpers/vscode-mock.js`.
-- `npm run build`: bundles the webview.
+- `npm run build`: bundles the webview, and `webview/report.css` into `dist/report.css` for the archive report.
 - `npm run package`: test, build and create the `.vsix`.
 - Brand check: `python ~/.claude/skills/sorenb-brand/scripts/brand_check.py . --category extension`.
