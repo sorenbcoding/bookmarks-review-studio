@@ -80,6 +80,23 @@ class ReviewStore {
     return notes.filter(Boolean);
   }
 
+  /** Every file under .review/, as project-independent paths ('notes/<id>.md', ...). */
+  async listFiles(dir = this.reviewDir, prefix = '') {
+    let entries;
+    try {
+      entries = await fs.readDirectory(dir);
+    } catch {
+      return [];
+    }
+    const files = [];
+    for (const [name, type] of entries) {
+      const uri = vscode.Uri.joinPath(dir, name);
+      if (type === vscode.FileType.Directory) files.push(...(await this.listFiles(uri, `${prefix}${name}/`)));
+      else if (type === vscode.FileType.File) files.push({ path: `${prefix}${name}`, uri });
+    }
+    return files;
+  }
+
   async exists(uri) {
     try {
       await fs.stat(uri);
