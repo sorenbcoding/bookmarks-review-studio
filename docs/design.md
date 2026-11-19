@@ -44,7 +44,7 @@ UiPath doesn't document this file. Its format was confirmed from real samples an
 - **Linking** (`src/core/reconcile.js`) takes three steps:
   1. Match a note by `bookmarkId`.
   2. If that fails, re-attach the note to a bookmark on the same workflow + `ActivityIdRef` that has no note yet. This covers a bookmark deleted and added again.
-  3. If that fails too, the note is an orphan. It is shown separately and never deleted automatically.
+  3. If that fails too, the note is an orphan. It is shown separately and never deleted automatically. The user can delete one or all orphans, or hide them with a setting (the files are kept).
 - **Hints stay current:** each refresh updates the hints, so renaming a workflow doesn't break step 2.
 - **Replies** are separate, append-only files, so a developer replying never conflicts in Git with a reviewer editing the note. Only the author can edit or delete a reply.
 - **Screenshots:** the editor shows them through webview URLs, and saving rewrites those to relative paths (`../assets/` from notes, `../../assets/` from replies). A screenshot is deleted only when neither the note nor any reply references it.

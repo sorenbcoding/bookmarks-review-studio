@@ -16,6 +16,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   - You can edit or delete only your own replies.
   - The list shows the number of replies.
 
+- **Notes without a bookmark can be deleted.** ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
+  - Open one and click **Delete note**, or use **Delete all** in the list.
+  - The confirmation is shown in the panel.
+- **Notes without a bookmark can be hidden** from the panel with **Hide**, or the setting `bookmarksReview.hideNotesWithoutBookmark`. The files are kept. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
+
+### Fixed
+- **Clicking a note without a bookmark** opens it. Before, nothing happened. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
+- **This workflow only** shows that workflow's notes without a bookmark. Before, they were hidden. ([#7](https://github.com/sorenbcoding/bookmarks-review-studio/issues/7))
+
 ### Changed
 - The extension is now `sorenbcoding.sorenb-studio-bookmarks-review`, displayed as *Bookmarks Review for UiPath Studio*, with the SorenB product logo. Uninstall the earlier `bookmarks-review.bookmarks-review` before installing it. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
 - The panel uses the SorenB brand tokens. The violet accent marks the current workflow, links and focus. Status badges are outlined in the brand status colours, so they keep their contrast in dark themes. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))

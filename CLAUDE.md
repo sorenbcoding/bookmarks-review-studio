@@ -43,6 +43,9 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
     - A screenshot is deleted only when neither the note nor any reply references it (`isAssetReferenced`).
   - There is no shared index file, to avoid merge conflicts.
   - Never delete a note automatically, except one that is empty, has status Open and has no replies. Deleting a note also deletes its replies and screenshots.
+  - Notes without a bookmark (orphans) are deleted only by the user, one at a time or with **Delete all**.
+  - `bookmarksReview.hideNotesWithoutBookmark` only hides orphans; the files stay. If the host can't save the setting, `context.globalState` holds the choice and takes precedence.
+- **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
 - **Note view:**
   - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.
   - A screenshot click opens the file in its default Windows app (`src/openFile.js`: `Invoke-Item -LiteralPath` through `powershell.exe`, path passed in an environment variable). `vscode.env.openExternal` did not open local files in Studio, so it is only the fallback.
