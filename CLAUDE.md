@@ -71,7 +71,9 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 - **Delete only what was confirmed or archived:**
   - **Bulk deletes:** `deleteOrphans` and `deleteAll` take the note ids, and bookmark ids, that the panel showed in its confirmation. The controller deletes only those that still qualify.
   - **Wrap-up:** a note is removed only if its files (`ReviewStore.noteFiles`) are byte-identical to the archived snapshot. A note that changed during the export is kept and reported.
-  - **Deleting files** goes through `remove()` in `src/stores.js`. It tries Studio's `workspace.fs.delete` first, then Node's `fs.rm` with retries if the path still exists. A note's screenshots and replies are deleted before the note file. A failure throws with the reason, for example a file in use, and is shown to the user; cleanup of unreferenced screenshots and of empty folders is best effort. Errors are never swallowed silently.
+  - **Deleting files** goes through `remove()` in `src/stores.js`, which uses Node's `fs.rm` directly; Studio's `workspace.fs.delete` was slow and failed silently on folders. A note's screenshots and replies are deleted before the note file.
+    - A path that can't be deleted, for example a file another program has open, doesn't block the delete. It goes into `workspaceState.pendingRemovals` and is retried on every refresh, and the user gets one message.
+  - **The panel never shows screenshots straight from `.review/`.** Studio's web view keeps the files it displays open, which stopped them from being deleted. `cacheImages` and `saveImage` copy screenshots to an image cache in `globalStorageUri`, falling back to the temp folder, and `assetBase` points the webview there. `localResourceRoots` is `dist` plus the cache; notes still store `../assets/` links.
   - **Strays:** files under `assets/` or `replies/` without a note file (`ReviewStore.strayFiles`), for example a screenshot pasted into a note that was never saved. **Delete all notes** removes them all. Wrap-up removes those the archive holds unchanged that weren't just pasted. Both then prune empty folders, and `.review/` itself if it ends up empty.
   - **Fresh screenshots:** a pasted screenshot is protected from cleanup (`freshAssets`) until a saved text links it, for at most 10 minutes, so an autosave already in flight can't delete it. `discardDraft` ignores the protection.
 - **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
@@ -95,5 +97,5 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 ## Commands
 - `npm test`: unit tests for `src/core/`, plus controller tests (`test/controller.test.js`) that run the real controller against a temporary project on disk, with `vscode` replaced by `test/helpers/vscode-mock.js`.
 - `npm run build`: bundles the webview, and `webview/report.css` into `dist/report.css` for the archive report.
-- `npm run package`: test, build and create the `.vsix`.
+- `npm run package`: test, build and create the `.vsix` in the repo root (ignored by Git). For a Studio test, give the user that file's path. Keep only the latest build there, and don't make copies elsewhere.
 - Brand check: `python ~/.claude/skills/sorenb-brand/scripts/brand_check.py . --category extension`.
