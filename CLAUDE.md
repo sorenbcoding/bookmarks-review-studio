@@ -71,6 +71,7 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 - **Delete only what was confirmed or archived:**
   - **Bulk deletes:** `deleteOrphans` and `deleteAll` take the note ids, and bookmark ids, that the panel showed in its confirmation. The controller deletes only those that still qualify.
   - **Wrap-up:** a note is removed only if its files (`ReviewStore.noteFiles`) are byte-identical to the archived snapshot. A note that changed during the export is kept and reported.
+  - **Strays:** files under `assets/` or `replies/` without a note file (`ReviewStore.strayFiles`), for example a screenshot pasted into a note that was never saved. **Delete all notes** removes them all. Wrap-up removes those the archive holds unchanged that weren't just pasted. Both then prune empty folders, and `.review/` itself if it ends up empty.
   - **Fresh screenshots:** a pasted screenshot is protected from cleanup (`freshAssets`) until a saved text links it, for at most 10 minutes, so an autosave already in flight can't delete it. `discardDraft` ignores the protection.
 - **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
 - **Note view:**
