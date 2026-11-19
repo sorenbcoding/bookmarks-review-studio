@@ -34,7 +34,11 @@ async function setup() {
   vscode.mock.workspaceFolders = [{ uri: vscode.Uri.file(root) }];
   vscode.mock.messages = [];
   vscode.mock.opened = [];
-  const context = { subscriptions: [], extensionUri: vscode.Uri.file(path.join(__dirname, '..')) };
+  vscode.mock.settings = {};
+  vscode.mock.settingsReadOnly = false;
+  const stored = new Map();
+  const globalState = { get: (k) => stored.get(k), update: async (k, v) => void (v === undefined ? stored.delete(k) : stored.set(k, v)) };
+  const context = { subscriptions: [], globalState, extensionUri: vscode.Uri.file(path.join(__dirname, '..')) };
   activate(context);
   const controller = vscode.mock.providers.get('bookmarksReview.view');
   await controller.ready;
@@ -142,10 +146,8 @@ test("someone else's reply can't be edited or deleted", async () => {
 
   await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, replyId, body: 'Changed' });
   assert.match(t.last('replyError').error, /Only Someone Else can change this reply/);
-  vscode.mock.warningAnswer = 'Delete';
   await t.send({ type: 'deleteReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, replyId });
   assert.equal(fs.readFileSync(t.file('replies', BOOKMARK, `${replyId}.md`), 'utf8'), other);
-  vscode.mock.warningAnswer = undefined;
 });
 
 test('own reply: editing to empty removes it', async () => {
@@ -186,10 +188,63 @@ test('deleting a note removes its replies and screenshots', async () => {
   const shot = await pasteImage(t);
   await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `![a](${shot})`, status: 'open' });
   await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
-  vscode.mock.warningAnswer = 'Delete';
   await t.send({ type: 'deleteNote', noteId: BOOKMARK });
-  vscode.mock.warningAnswer = undefined;
   for (const p of [t.file('notes', `${BOOKMARK}.md`), t.file('replies', BOOKMARK), t.file('assets', BOOKMARK)]) {
     assert.ok(!fs.existsSync(p), `${p} removed`);
   }
+});
+
+/** Removes a bookmark from Studio's file, as deleting it in Studio does, and refreshes. */
+async function deleteBookmark(t, id) {
+  const file = path.join(t.root, '.project', 'bookmarks.json');
+  const json = JSON.parse(fs.readFileSync(file, 'utf8').replace(/^﻿/, ''));
+  for (const key of Object.keys(json.Value)) json.Value[key] = json.Value[key].filter((b) => b.Id !== id);
+  fs.writeFileSync(file, JSON.stringify(json));
+  await t.controller.refresh();
+}
+
+test('a note whose bookmark was deleted can be deleted without a host dialog', async () => {
+  const t = await setup();
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Fix this', status: 'resolved' });
+  await deleteBookmark(t, BOOKMARK);
+  assert.deepEqual(t.last('state').orphans.map((o) => o.noteId), [BOOKMARK]);
+
+  vscode.mock.messages = [];
+  await t.send({ type: 'deleteNote', noteId: BOOKMARK });
+  assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
+  assert.equal(t.last('state').orphans.length, 0);
+  assert.deepEqual(vscode.mock.messages, [], 'no host dialog');
+});
+
+test('Delete all removes only the notes without a bookmark', async () => {
+  const t = await setup();
+  const other = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const kept = 'd52f3772-4097-4d10-b889-001015f31f64';
+  for (const id of [BOOKMARK, other, kept]) {
+    await t.send({ type: 'save', bookmarkId: id, noteId: id, body: `Note ${id}`, status: 'open' });
+  }
+  await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
+  await deleteBookmark(t, BOOKMARK);
+  await deleteBookmark(t, other);
+  assert.equal(t.last('state').orphans.length, 2);
+
+  await t.send({ type: 'deleteOrphans' });
+  assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)));
+  assert.ok(!fs.existsSync(t.file('replies', BOOKMARK)));
+  assert.ok(!fs.existsSync(t.file('notes', `${other}.md`)));
+  assert.ok(fs.existsSync(t.file('notes', `${kept}.md`)), 'the note with a bookmark is kept');
+  assert.equal(t.last('state').orphans.length, 0);
+});
+
+test('hiding notes without a bookmark is a user setting, with extension storage as fallback', async () => {
+  const t = await setup();
+  await t.send({ type: 'ready' });
+  assert.equal(t.last('state').hideOrphans, false);
+  await t.send({ type: 'setHideOrphans', value: true });
+  assert.equal(vscode.mock.settings['bookmarksReview.hideNotesWithoutBookmark'], true);
+  assert.equal(t.last('state').hideOrphans, true);
+
+  vscode.mock.settingsReadOnly = true;
+  await t.send({ type: 'setHideOrphans', value: false });
+  assert.equal(t.last('state').hideOrphans, false, 'kept in extension storage when the setting cannot be saved');
 });

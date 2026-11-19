@@ -14,6 +14,8 @@ const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 // Relative path from a file to .review/assets/: notes live one level down, replies two.
 const NOTE_ASSETS = '../assets/';
 const REPLY_ASSETS = '../../assets/';
+const CONFIG = 'bookmarksReview';
+const HIDE_ORPHANS = 'hideNotesWithoutBookmark';
 
 /** @type {vscode.OutputChannel} */
 let log;
@@ -81,6 +83,9 @@ class ReviewController {
         if (!file || file === this.activeWorkflow) return;
         this.activeWorkflow = file;
         this.post({ type: 'activeWorkflow', file });
+      }),
+      vscode.workspace.onDidChangeConfiguration((e) => {
+        if (e.affectsConfiguration(`${CONFIG}.${HIDE_ORPHANS}`)) this.postState();
       })
     );
     await this.refresh();
@@ -209,6 +214,7 @@ class ReviewController {
       author: this.author,
       activeWorkflow: this.activeWorkflow ?? null,
       workflows: [...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, bookmarks]) => ({ file, bookmarks })),
+      hideOrphans: this.hideOrphans,
       orphans: this.orphans.map((n) => ({
         noteId: n.meta.noteId,
         workflow: n.meta.workflow,
@@ -252,6 +258,12 @@ class ReviewController {
         break;
       case 'deleteNote':
         await this.deleteNote(msg.noteId);
+        break;
+      case 'deleteOrphans':
+        await this.deleteOrphans();
+        break;
+      case 'setHideOrphans':
+        await this.setHideOrphans(msg.value === true);
         break;
       case 'openWorkflow':
         await this.openWorkflow(msg.file);
@@ -363,10 +375,9 @@ class ReviewController {
 
   async deleteReply({ bookmarkId, noteId, replyId }) {
     if (!isValidId(noteId) || !isValidReplyId(replyId)) return;
+    // The panel asks for confirmation; Studio's host dialogs aren't relied on.
     const existing = await this.reviewStore.readReply(noteId, replyId);
     if (!existing || existing.meta.author !== this.author) return;
-    const choice = await vscode.window.showWarningMessage('Delete this reply and its screenshots?', { modal: true }, 'Delete');
-    if (choice !== 'Delete') return;
     await this.enqueue(async () => {
       await this.reviewStore.deleteReply(noteId, replyId);
       await this.cleanupAssets(noteId);
@@ -424,13 +435,45 @@ class ReviewController {
     this.post({ type: 'imageSaved', requestId, src: this.view.webview.asWebviewUri(uri).toString() });
   }
 
+  /** Deletes a note with its replies and screenshots. The panel asks for confirmation first. */
   async deleteNote(noteId) {
     if (!isValidId(noteId)) return;
-    const choice = await vscode.window.showWarningMessage('Delete this review note and its screenshots?', { modal: true }, 'Delete');
-    if (choice !== 'Delete') return;
     await this.enqueue(() => this.reviewStore.deleteNote(noteId));
+    log.appendLine(`Deleted note ${noteId}`);
     this.post({ type: 'deleted', noteId });
     await this.refresh();
+  }
+
+  /** Deletes every note whose bookmark is gone, as of the last refresh. */
+  async deleteOrphans() {
+    await this.refresh();
+    const ids = this.orphans.map((n) => n.meta.noteId);
+    await this.enqueue(async () => {
+      for (const id of ids) await this.reviewStore.deleteNote(id);
+    });
+    log.appendLine(`Deleted ${ids.length} notes without a bookmark`);
+    for (const noteId of ids) this.post({ type: 'deleted', noteId });
+    await this.refresh();
+  }
+
+  /**
+   * Whether notes without a bookmark are hidden from the panel (the files are kept).
+   * The user setting is the source; extension storage is the fallback if the host can't save settings.
+   */
+  get hideOrphans() {
+    const fallback = this.context.globalState?.get(HIDE_ORPHANS);
+    return fallback ?? vscode.workspace.getConfiguration(CONFIG).get(HIDE_ORPHANS, false);
+  }
+
+  async setHideOrphans(value) {
+    try {
+      await vscode.workspace.getConfiguration(CONFIG).update(HIDE_ORPHANS, value, vscode.ConfigurationTarget.Global);
+      await this.context.globalState?.update(HIDE_ORPHANS, undefined);
+    } catch (err) {
+      log.appendLine(`Could not save the setting ${CONFIG}.${HIDE_ORPHANS}, kept in extension storage: ${err?.message ?? err}`);
+      await this.context.globalState?.update(HIDE_ORPHANS, value);
+    }
+    this.postState();
   }
 
   html(webview) {

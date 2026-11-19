@@ -52,6 +52,16 @@
           "name": "Review notes"
         }
       ]
+    },
+    "configuration": {
+      "title": "Bookmarks Review",
+      "properties": {
+        "bookmarksReview.hideNotesWithoutBookmark": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hides review notes whose Studio bookmark was deleted. The note files stay in .review/, re-attach if the bookmark is added again, and can be shown again from the panel."
+        }
+      }
     }
   },
   "scripts": {

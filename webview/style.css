@@ -132,6 +132,11 @@ button.link:hover { text-decoration: underline; }
   background: var(--surface);
 }
 button.danger { color: var(--sb-status-error); text-decoration: underline; }
+.confirm { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--sb-space-2); }
+.confirm-question { color: var(--sb-status-error); }
+.btn.small { padding: 0 var(--sb-space-2); }
+.btn.danger-btn { color: var(--sb-status-error); border-color: var(--sb-status-error); }
+.hidden-orphans { margin-top: var(--sb-space-4); }
 
 .studio-msg { margin: var(--sb-space-3) 0; padding: var(--sb-space-2); border-radius: var(--sb-radius-sm); background: var(--surface); }
 .studio-msg .label {

@@ -69,6 +69,24 @@ function formatTime(iso) {
 const badge = (status) => h('span', { class: `badge ${status}` }, STATUS_LABELS[status] ?? status);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
+/**
+ * A button that asks "question  [Yes label] [Cancel]" in place before running onConfirm.
+ * Confirmation stays in the panel: Studio's host dialogs aren't relied on.
+ */
+function confirmButton({ label, question, yes, onConfirm, cls = 'link small' }) {
+  const wrap = h('span', { class: 'confirm' });
+  const idle = () => wrap.replaceChildren(h('button', { class: cls, onclick: ask }, label));
+  function ask() {
+    wrap.replaceChildren(
+      h('span', { class: 'confirm-question small' }, question),
+      h('button', { class: 'btn danger-btn small', onclick: () => { wrap.replaceChildren(h('span', { class: 'muted small' }, 'Deleting…')); onConfirm(); } }, yes),
+      h('button', { class: 'btn small', onclick: idle }, 'Cancel'));
+    wrap.querySelector('.danger-btn')?.focus();
+  }
+  idle();
+  return wrap;
+}
+
 function setSaveState(text) {
   const node = document.getElementById('saveState');
   if (node) node.textContent = text;
@@ -85,7 +103,7 @@ function renderList() {
 
   const all = state.workflows.flatMap((w) => w.bookmarks);
   const withNotes = all.filter((b) => b.note).length;
-  const open = all.filter((b) => b.note?.status === 'open').length;
+  const openCount = all.filter((b) => b.note?.status === 'open').length;
   const toggle = h('input', { type: 'checkbox', id: 'onlyCurrent', checked: prefs.onlyCurrent, onchange: (e) => {
     prefs.onlyCurrent = e.target.checked;
     savePrefs();
@@ -93,7 +111,7 @@ function renderList() {
   } });
   app.append(
     h('div', { class: 'listbar' },
-      h('span', { class: 'muted' }, `${plural(all.length, 'bookmark')} · ${withNotes} with notes · ${open} open`),
+      h('span', { class: 'muted' }, `${plural(all.length, 'bookmark')} · ${withNotes} with notes · ${openCount} open`),
       h('label', { class: 'toggle', for: 'onlyCurrent' }, toggle, 'This workflow only'))
   );
 
@@ -125,11 +143,28 @@ function renderList() {
     app.append(h('ul', { class: `rows${current ? ' current' : ''}` }, wf.bookmarks.map((b) => row(b))));
   }
 
-  if (state.orphans.length && !prefs.onlyCurrent) {
+  // Notes whose bookmark was deleted in Studio. With "This workflow only", only that workflow's.
+  const orphans = prefs.onlyCurrent ? state.orphans.filter((o) => isCurrent(o.workflow)) : state.orphans;
+  const setHidden = (value) => vscode.postMessage({ type: 'setHideOrphans', value });
+  if (orphans.length && state.hideOrphans) {
     app.append(
-      h('h3', { class: 'workflow' }, 'Notes without a bookmark'),
-      h('p', { class: 'muted small' }, 'Their bookmark was deleted in Studio. Re-add a bookmark on the same activity to re-attach a note, or delete it.'),
-      h('ul', { class: 'rows' }, state.orphans.map((o) =>
+      h('p', { class: 'muted small hidden-orphans' },
+        `${orphans.length === 1 ? '1 note' : `${orphans.length} notes`} without a bookmark hidden. `,
+        h('button', { class: 'link small', onclick: () => setHidden(false) }, 'Show')));
+  } else if (orphans.length) {
+    app.append(
+      h('div', { class: 'wf-head' },
+        h('h3', { class: 'workflow' }, 'Notes without a bookmark'),
+        h('span', { class: 'topbar-right' },
+          h('button', { class: 'link small', title: 'Hide notes whose bookmark was deleted. The files are kept.', onclick: () => setHidden(true) }, 'Hide'),
+          confirmButton({
+            label: 'Delete all',
+            question: `Delete ${orphans.length === 1 ? 'this note' : `all ${orphans.length} notes`} with replies and screenshots?`,
+            yes: 'Delete',
+            onConfirm: () => vscode.postMessage({ type: 'deleteOrphans' }),
+          }))),
+      h('p', { class: 'muted small' }, 'Their bookmark was deleted in Studio. Re-add a bookmark on the same activity to re-attach a note, or open a note to delete it.'),
+      h('ul', { class: 'rows' }, orphans.map((o) =>
         h('li', {}, h('button', { class: 'row orphan', onclick: () => open({ noteId: o.noteId }) },
           h('span', { class: 'row-main' },
             h('span', { class: 'title' }, o.excerpt || o.activityName || 'Review note'),
@@ -214,7 +249,13 @@ function header(extraTopButton) {
     current.orphan
       ? h('div', { class: 'banner' },
           h('span', {}, 'The bookmark for this note was deleted in Studio.'),
-          h('button', { class: 'danger', onclick: () => vscode.postMessage({ type: 'deleteNote', noteId: current.noteId }) }, 'Delete note'))
+          confirmButton({
+            label: 'Delete note',
+            question: 'Delete this note, its replies and screenshots?',
+            yes: 'Delete',
+            cls: 'danger',
+            onConfirm: () => vscode.postMessage({ type: 'deleteNote', noteId: current.noteId }),
+          }))
       : null,
     b ? h('div', { class: 'studio-msg' },
           h('span', { class: 'label' }, 'Studio message'),
@@ -291,7 +332,12 @@ function repliesSection() {
         r.mine
           ? h('span', { class: 'reply-actions' },
               h('button', { class: 'link small', onclick: () => startReply(r) }, 'Edit'),
-              h('button', { class: 'link small', onclick: () => vscode.postMessage({ type: 'deleteReply', bookmarkId: current.bookmark?.id, noteId: current.noteId, replyId: r.id }) }, 'Delete'))
+              confirmButton({
+                label: 'Delete',
+                question: 'Delete this reply?',
+                yes: 'Delete',
+                onConfirm: () => vscode.postMessage({ type: 'deleteReply', bookmarkId: current.bookmark?.id, noteId: current.noteId, replyId: r.id }),
+              }))
           : null),
       h('div', { id: `reply-${r.id}`, class: 'reply-body' })));
   return h('section', { class: 'replies' },
