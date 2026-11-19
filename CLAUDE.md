@@ -4,7 +4,7 @@ Owner: sorenbcoding
 Brand: sorenb-brand
 Brand category: extension (violet accent, ID pattern `SorenB.Studio.BookmarksReview` → extension name `sorenb-studio-bookmarks-review`)
 
-UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScript, packaged as `.vsix`). It adds rich review notes to Studio's built-in bookmarks: formatted text and inline screenshots, stored in the project's Git repo. The repo is private.
+UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScript, packaged as `.vsix`). It adds rich review notes to Studio's built-in bookmarks: formatted text and inline screenshots, stored in the project's Git repo. The repo is public.
 
 ## Layout
 - `src/`: extension code.
