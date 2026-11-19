@@ -15,6 +15,7 @@ Module._resolveFilename = function (request, ...rest) {
 const vscode = require('vscode');
 const { activate } = require('../src/extension');
 const opener = require('../src/openFile');
+const stores = require('../src/stores');
 const { unzip } = require('./helpers/unzip');
 
 // Never start a real image viewer from the tests.
@@ -37,9 +38,19 @@ async function setup() {
   vscode.mock.opened = [];
   vscode.mock.settings = {};
   vscode.mock.settingsReadOnly = false;
+  vscode.mock.folderDeleteFails = false;
   const stored = new Map();
   const globalState = { get: (k) => stored.get(k), update: async (k, v) => void (v === undefined ? stored.delete(k) : stored.set(k, v)) };
-  const context = { subscriptions: [], globalState, extensionUri: vscode.Uri.file(path.join(__dirname, '..')) };
+  const wsStored = new Map();
+  const workspaceState = { get: (k, d) => (wsStored.has(k) ? wsStored.get(k) : d), update: async (k, v) => void wsStored.set(k, v) };
+  const storage = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-storage-'));
+  const context = {
+    subscriptions: [],
+    globalState,
+    workspaceState,
+    globalStorageUri: vscode.Uri.file(storage),
+    extensionUri: vscode.Uri.file(path.join(__dirname, '..')),
+  };
   activate(context);
   const controller = vscode.mock.providers.get('bookmarksReview.view');
   await controller.ready;
@@ -74,7 +85,7 @@ async function setup() {
   };
   const last = (type) => posted.filter((m) => m.type === type).at(-1);
   const file = (...p) => path.join(root, '.review', ...p);
-  return { root, controller, posted, send, last, file, globalState, hooks };
+  return { root, controller, posted, send, last, file, globalState, workspaceState, storage, hooks };
 }
 
 async function pasteImage(t) {
@@ -445,4 +456,103 @@ test('review fix: an autosave in flight does not delete a just-pasted screenshot
   const draftShot = (await pasteImage(t)).split('/').pop();
   await t.send({ type: 'discardDraft', noteId: BOOKMARK });
   assert.ok(!fs.existsSync(t.file('assets', BOOKMARK, draftShot)));
+});
+
+test('strays: Delete all notes also removes screenshots and replies that belong to no note', async () => {
+  const t = await setup();
+  const neverSaved = 'd52f3772-4097-4d10-b889-001015f31f64';
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `A ![s](${shot})`, status: 'open' });
+  // A screenshot pasted into a new note that was never saved, a loose file and a reply folder without a note.
+  await t.send({ type: 'pasteImage', requestId: 1, noteId: neverSaved, dataUrl: PNG });
+  fs.writeFileSync(t.file('assets', 'loose.png'), 'x');
+  fs.mkdirSync(t.file('replies', neverSaved), { recursive: true });
+  fs.writeFileSync(t.file('replies', neverSaved, '20261119T120000Z-abcd.md'), 'x');
+
+  await t.send({ type: 'deleteAll', withBookmarks: false, noteIds: [BOOKMARK] });
+  assert.ok(!fs.existsSync(path.join(t.root, '.review')), '.review is gone: no notes, screenshots or replies left');
+});
+
+test('strays: wrap-up removes archived strays, keeps a screenshot that was just pasted', async () => {
+  const t = await setup();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-'));
+  await t.globalState.update('archiveFolder', out);
+  const oldStray = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const freshStray = 'd52f3772-4097-4d10-b889-001015f31f64';
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Done', status: 'resolved' });
+  fs.mkdirSync(t.file('assets', oldStray), { recursive: true });
+  fs.writeFileSync(t.file('assets', oldStray, 'old.png'), 'left by an earlier session');
+  await t.send({ type: 'pasteImage', requestId: 2, noteId: freshStray, dataUrl: PNG });
+  const freshFile = fs.readdirSync(t.file('assets', freshStray))[0];
+
+  await t.send({ type: 'exportArchive', remove: 'all' });
+  const done = t.last('archived');
+  assert.equal(done.removed, 1);
+  assert.ok(unzip(fs.readFileSync(done.file))[`.review/assets/${oldStray}/old.png`], 'the stray is in the archive');
+  assert.ok(!fs.existsSync(t.file('assets', oldStray)), 'archived stray removed');
+  assert.ok(fs.existsSync(t.file('assets', freshStray, freshFile)), 'just-pasted screenshot kept');
+  assert.ok(!fs.existsSync(t.file('notes')), 'empty notes folder pruned');
+});
+
+test('deleting an orphaned note removes its screenshots even if the host cannot delete folders', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  await t.send({ type: 'saveReply', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Reply' });
+  await deleteBookmark(t, BOOKMARK);
+  vscode.mock.folderDeleteFails = true;
+  try {
+    await t.send({ type: 'deleteNote', noteId: BOOKMARK });
+  } finally {
+    vscode.mock.folderDeleteFails = false;
+  }
+  assert.ok(!fs.existsSync(t.file('assets', BOOKMARK)), 'screenshot folder removed');
+  assert.ok(!fs.existsSync(t.file('replies', BOOKMARK)), 'reply folder removed');
+  assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)), 'note removed');
+});
+
+test('locks: the panel shows copies, never the project screenshot files', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  const cache = path.join(t.storage, 'image-cache');
+  assert.ok(shot.includes('image-cache'), `pasted screenshot shown from the cache: ${shot}`);
+  assert.ok(!shot.includes('/.review/'), 'not from .review/');
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  assert.match(fs.readFileSync(t.file('notes', `${BOOKMARK}.md`), 'utf8'), /\]\(\.\.\/assets\//, 'note stores the relative path');
+
+  // A note opened later (e.g. after a pull, cache empty) gets its screenshots copied into the cache.
+  fs.rmSync(cache, { recursive: true, force: true });
+  await t.send({ type: 'open', bookmarkId: BOOKMARK });
+  const body = t.last('note').body;
+  const src = /\]\(([^)]+)\)/.exec(body)[1];
+  assert.ok(src.includes('image-cache'));
+  const cachedFile = src.replace('https://wv/', '');
+  assert.ok(fs.existsSync(cachedFile), 'copy exists for the panel');
+});
+
+test('locks: a screenshot locked by another program does not block deleting the note', async () => {
+  const t = await setup();
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `See ![s](${shot})`, status: 'open' });
+  await deleteBookmark(t, BOOKMARK);
+  const realRm = stores.fileOps.rm;
+  stores.fileOps.rm = async (p, opts) => {
+    if (p.includes(`assets${path.sep}${BOOKMARK}`)) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+    return realRm(p, opts);
+  };
+  vscode.mock.messages = [];
+  try {
+    await t.send({ type: 'deleteNote', noteId: BOOKMARK });
+    assert.ok(!fs.existsSync(t.file('notes', `${BOOKMARK}.md`)), 'the note is deleted anyway');
+    assert.ok(fs.existsSync(t.file('assets', BOOKMARK)), 'the locked folder is still there');
+    assert.equal(t.last('state').orphans.length, 0);
+    assert.ok(vscode.mock.messages.some(([kind, m]) => kind === 'info' && /in use by another program/.test(m)));
+    assert.deepEqual(t.workspaceState.get('pendingRemovals'), [t.file('assets', BOOKMARK)]);
+  } finally {
+    stores.fileOps.rm = realRm;
+  }
+  // Released: the next refresh removes it and forgets it.
+  await t.controller.refresh();
+  assert.ok(!fs.existsSync(t.file('assets', BOOKMARK)), 'removed once released');
+  assert.deepEqual(t.workspaceState.get('pendingRemovals'), []);
 });
