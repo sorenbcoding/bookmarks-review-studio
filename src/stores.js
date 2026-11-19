@@ -264,6 +264,46 @@ class ReviewStore {
     return files;
   }
 
+  /**
+   * Files under assets/ and replies/ that belong to no note: folders whose note file is gone (for example
+   * a screenshot pasted into a new note that was never saved) and loose files. Keys as in listFiles().
+   */
+  async strayFiles() {
+    const hasNote = new Set((await this.listFiles(this.notesDir, 'notes/')).map((f) => f.path));
+    const strays = [];
+    for (const [dir, prefix] of [[this.assetsDir, 'assets/'], [this.repliesDir, 'replies/']]) {
+      for (const f of await this.listFiles(dir, prefix)) {
+        const parts = f.path.split('/');
+        if (parts.length !== 3 || !hasNote.has(`notes/${parts[1]}.md`)) strays.push(f);
+      }
+    }
+    return strays;
+  }
+
+  /** Deletes the given stray files, then empty folders under .review/ and .review/ itself if empty. */
+  async removeStrays(files) {
+    for (const f of files) await fs.delete(f.uri).then(undefined, () => {});
+    await this.pruneEmptyDirs(this.reviewDir);
+  }
+
+  /** Removes empty folders below `dir` (and `dir` itself when it ends up empty). @returns {Promise<boolean>} emptied */
+  async pruneEmptyDirs(dir) {
+    let entries;
+    try {
+      entries = await fs.readDirectory(dir);
+    } catch {
+      return false;
+    }
+    let left = 0;
+    for (const [name, type] of entries) {
+      if (type === vscode.FileType.Directory && (await this.pruneEmptyDirs(vscode.Uri.joinPath(dir, name)))) continue;
+      left++;
+    }
+    if (left) return false;
+    await fs.delete(dir, { recursive: true }).then(undefined, () => {});
+    return true;
+  }
+
   /** Deletes screenshots of a note that no text references, except the file names in `keep`. */
   async cleanupAssets(noteId, texts, keep = new Set()) {
     const dir = vscode.Uri.joinPath(this.assetsDir, noteId);

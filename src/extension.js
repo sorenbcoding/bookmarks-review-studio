@@ -572,10 +572,17 @@ class ReviewController {
     await this.refresh();
     const ids = [...this.attached.values(), ...this.orphans].map((n) => n.meta.noteId).filter((id) => noteIds.has(id));
     let removedBookmarks = 0;
+    let strays = 0;
     await this.enqueue(async () => {
       for (const id of ids) await this.reviewStore.deleteNote(id);
+      // Screenshots and replies that belong to no note (e.g. pasted into a note that was never saved).
+      const files = await this.reviewStore.strayFiles();
+      strays = files.length;
+      await this.reviewStore.removeStrays(files);
+      this.freshAssets.clear(); // nothing is being edited while the Settings view is open
       if (withBookmarks && bookmarkIds.size) removedBookmarks = await this.bookmarkStore.removeOnly(bookmarkIds);
     });
+    if (strays) log.appendLine(`Removed ${strays} files that belonged to no note`);
     log.appendLine(`Deleted all notes (${ids.length})${withBookmarks ? ` and ${removedBookmarks} bookmarks` : ''}`);
     for (const noteId of ids) this.post({ type: 'deleted', noteId });
     this.post({ type: 'allDeleted', notes: ids.length, bookmarks: removedBookmarks, withBookmarks });
@@ -700,6 +707,15 @@ class ReviewController {
             log.appendLine(`Kept note ${id}: it changed during the export, so the archive does not hold its current version`);
           }
         }
+        // Files that belong to no note go too, if the archive holds them unchanged and they weren't just pasted.
+        const strays = [];
+        for (const f of await this.reviewStore.strayFiles()) {
+          const fresh = this.freshAssets.has(f.path.replace(/^assets\//, ''));
+          const archived = data.get(f.path);
+          if (!fresh && archived && archived.equals(Buffer.from(await vscode.workspace.fs.readFile(f.uri)))) strays.push(f);
+        }
+        await this.reviewStore.removeStrays(strays);
+        if (strays.length) log.appendLine(`Removed ${strays.length} archived files that belonged to no note`);
       });
       if (ids.length) log.appendLine(`Removed ${ids.length} notes after the export`);
 

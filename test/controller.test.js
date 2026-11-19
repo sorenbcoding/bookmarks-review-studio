@@ -446,3 +446,39 @@ test('review fix: an autosave in flight does not delete a just-pasted screenshot
   await t.send({ type: 'discardDraft', noteId: BOOKMARK });
   assert.ok(!fs.existsSync(t.file('assets', BOOKMARK, draftShot)));
 });
+
+test('strays: Delete all notes also removes screenshots and replies that belong to no note', async () => {
+  const t = await setup();
+  const neverSaved = 'd52f3772-4097-4d10-b889-001015f31f64';
+  const shot = await pasteImage(t);
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: `A ![s](${shot})`, status: 'open' });
+  // A screenshot pasted into a new note that was never saved, a loose file and a reply folder without a note.
+  await t.send({ type: 'pasteImage', requestId: 1, noteId: neverSaved, dataUrl: PNG });
+  fs.writeFileSync(t.file('assets', 'loose.png'), 'x');
+  fs.mkdirSync(t.file('replies', neverSaved), { recursive: true });
+  fs.writeFileSync(t.file('replies', neverSaved, '20261119T120000Z-abcd.md'), 'x');
+
+  await t.send({ type: 'deleteAll', withBookmarks: false, noteIds: [BOOKMARK] });
+  assert.ok(!fs.existsSync(path.join(t.root, '.review')), '.review is gone: no notes, screenshots or replies left');
+});
+
+test('strays: wrap-up removes archived strays, keeps a screenshot that was just pasted', async () => {
+  const t = await setup();
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bookmarks-review-archive-'));
+  await t.globalState.update('archiveFolder', out);
+  const oldStray = 'cb869369-1453-41dc-8a14-a4c93fb9250f';
+  const freshStray = 'd52f3772-4097-4d10-b889-001015f31f64';
+  await t.send({ type: 'save', bookmarkId: BOOKMARK, noteId: BOOKMARK, body: 'Done', status: 'resolved' });
+  fs.mkdirSync(t.file('assets', oldStray), { recursive: true });
+  fs.writeFileSync(t.file('assets', oldStray, 'old.png'), 'left by an earlier session');
+  await t.send({ type: 'pasteImage', requestId: 2, noteId: freshStray, dataUrl: PNG });
+  const freshFile = fs.readdirSync(t.file('assets', freshStray))[0];
+
+  await t.send({ type: 'exportArchive', remove: 'all' });
+  const done = t.last('archived');
+  assert.equal(done.removed, 1);
+  assert.ok(unzip(fs.readFileSync(done.file))[`.review/assets/${oldStray}/old.png`], 'the stray is in the archive');
+  assert.ok(!fs.existsSync(t.file('assets', oldStray)), 'archived stray removed');
+  assert.ok(fs.existsSync(t.file('assets', freshStray, freshFile)), 'just-pasted screenshot kept');
+  assert.ok(!fs.existsSync(t.file('notes')), 'empty notes folder pruned');
+});
