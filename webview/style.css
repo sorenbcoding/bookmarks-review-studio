@@ -154,9 +154,46 @@ button.danger { color: var(--sb-status-error); text-decoration: underline; }
   border-radius: var(--sb-radius-sm);
 }
 
+/* ---- buttons */
+.btn {
+  padding: var(--sb-space-1) var(--sb-space-3);
+  line-height: 18px;
+  border: var(--sb-border-width) solid var(--border);
+  border-radius: var(--sb-radius-sm);
+  background: var(--surface);
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { color: var(--sb-surface); background: var(--accent); border-color: var(--accent); }
+.btn.primary:hover { opacity: 0.9; }
+.topbar-right { display: inline-flex; align-items: center; gap: var(--sb-space-2); }
+.actions { display: flex; flex-wrap: wrap; gap: var(--sb-space-2); margin: var(--sb-space-3) 0; }
+
+/* ---- read view */
+.note-body, .reply-body { overflow-wrap: anywhere; }
+.note-body .toastui-editor-contents, .reply-body .toastui-editor-contents { font-size: 13px; padding: 0; }
+.note-body img, .reply-body img {
+  max-width: 100%;
+  height: auto;
+  cursor: zoom-in;
+  border: var(--sb-border-width) solid var(--border);
+  border-radius: var(--sb-radius-sm);
+}
+.note-body img:hover, .reply-body img:hover { border-color: var(--accent); }
+.note-body a, .reply-body a { color: var(--accent); }
+.note-empty { margin: var(--sb-space-3) 0; }
+
+/* ---- replies */
+.replies { margin-top: var(--sb-space-6); padding-top: var(--sb-space-3); border-top: var(--sb-border-width) solid var(--border); }
+.replies-title { font-size: 1em; font-weight: 600; margin: 0 0 var(--sb-space-2); }
+.reply { margin: var(--sb-space-2) 0; padding: var(--sb-space-2) var(--sb-space-3); border-left: 2px solid var(--border); border-radius: var(--sb-radius-sm); background: var(--surface); }
+.reply-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sb-space-2); margin-bottom: var(--sb-space-1); }
+.reply-author { font-weight: 600; }
+.reply-actions { display: inline-flex; gap: var(--sb-space-2); margin-left: auto; }
+.composer-title { margin: var(--sb-space-2) 0 var(--sb-space-1); }
+
 /* ---- editor: fit the sidebar, keep screenshots inside it, flat brand corners */
-#editor .toastui-editor-defaultUI { border-color: var(--border); border-radius: var(--sb-radius-md); }
-#editor .toastui-editor-contents { font-size: 13px; }
-#editor .toastui-editor-contents a { color: var(--accent); }
-#editor .toastui-editor-contents img { max-width: 100%; height: auto; border: var(--sb-border-width) solid var(--border); }
-#editor .toastui-editor-toolbar { flex-wrap: wrap; }
+#editor .toastui-editor-defaultUI, #replyEditor .toastui-editor-defaultUI { border-color: var(--border); border-radius: var(--sb-radius-md); }
+#editor .toastui-editor-contents, #replyEditor .toastui-editor-contents { font-size: 13px; }
+#editor .toastui-editor-contents a, #replyEditor .toastui-editor-contents a { color: var(--accent); }
+#editor .toastui-editor-contents img, #replyEditor .toastui-editor-contents img { max-width: 100%; height: auto; border: var(--sb-border-width) solid var(--border); }
+#editor .toastui-editor-toolbar, #replyEditor .toastui-editor-toolbar { flex-wrap: wrap; }

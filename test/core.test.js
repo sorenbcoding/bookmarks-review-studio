@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const { parseBookmarks } = require('../src/core/bookmarks');
-const { serializeNote, parseNote, isValidId, countImages, excerpt } = require('../src/core/noteFile');
+const { serializeNote, parseNote, isValidId, isValidReplyId, newReplyId, isAssetReferenced, countImages, excerpt } = require('../src/core/noteFile');
 const { reconcile } = require('../src/core/reconcile');
 
 const sample = fs.readFileSync(path.join(__dirname, 'fixtures', 'bookmarks.json'), 'utf8');
@@ -52,6 +52,33 @@ test('id validation blocks path tricks', () => {
   assert.ok(isValidId('c7311c1d-903e-4b37-af5e-f02ec9413a1b'));
   assert.ok(!isValidId('../../etc'));
   assert.ok(!isValidId('c7311c1d-903e-4b37-af5e-f02ec9413a1b/../x'));
+});
+
+test('reply ids are chronological, valid and reject path tricks', () => {
+  const a = newReplyId(new Date('2026-11-19T10:15:00.123Z'), () => 0);
+  const b = newReplyId(new Date('2026-11-19T10:16:00.000Z'), () => 0.99);
+  assert.equal(a, '20261119T101500Z-0000');
+  assert.ok(isValidReplyId(a) && isValidReplyId(b));
+  assert.ok([b, a].sort()[0] === a);
+  assert.ok(!isValidReplyId('../x'));
+  assert.ok(!isValidReplyId('20261119T101500Z-0000.md'));
+});
+
+test('replies round-trip through the note format', () => {
+  const meta = { author: 'Developer', created: '2026-11-19T10:15:00.000Z', updated: '2026-11-19T10:15:00.000Z' };
+  const parsed = parseNote(serializeNote(meta, 'Fixed in **abc123**'));
+  assert.deepEqual(parsed.meta, meta);
+  assert.equal(parsed.body, 'Fixed in **abc123**');
+});
+
+test('asset references are found from the note and from replies (different relative depths)', () => {
+  const id = 'c7311c1d-903e-4b37-af5e-f02ec9413a1b';
+  const note = `![s](../assets/${id}/a.png)`;
+  const reply = `![s](../../assets/${id}/b.png)`;
+  assert.ok(isAssetReferenced(id, 'a.png', [note, reply]));
+  assert.ok(isAssetReferenced(id, 'b.png', [note, reply]));
+  assert.ok(!isAssetReferenced(id, 'c.png', [note, reply]));
+  assert.ok(!isAssetReferenced(id, 'a.png', [reply]));
 });
 
 test('countImages and excerpt', () => {

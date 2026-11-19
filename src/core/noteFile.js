@@ -24,6 +24,26 @@ function isValidId(id) {
   return typeof id === 'string' && ID_PATTERN.test(id);
 }
 
+// Replies: .review/replies/<noteId>/<replyId>.md, same front matter format (author, created, updated).
+// The id starts with the UTC creation time, so sorting by name gives chronological order.
+const REPLY_ID_PATTERN = /^\d{8}T\d{6}Z-[a-z0-9]{4}$/;
+
+function isValidReplyId(id) {
+  return typeof id === 'string' && REPLY_ID_PATTERN.test(id);
+}
+
+function newReplyId(date = new Date(), random = Math.random) {
+  const stamp = date.toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
+  const suffix = Array.from({ length: 4 }, () => '0123456789abcdefghijklmnopqrstuvwxyz'[Math.floor(random() * 36)]).join('');
+  return `${stamp}-${suffix}`;
+}
+
+/** True if any of the texts (note body, reply bodies) links the screenshot assets/<noteId>/<fileName>. */
+function isAssetReferenced(noteId, fileName, texts) {
+  const needle = `assets/${noteId}/${fileName}`;
+  return texts.some((t) => String(t ?? '').includes(needle));
+}
+
 function serializeNote(meta, body) {
   const lines = ['---'];
   for (const key of FIELDS) {
@@ -71,4 +91,15 @@ function excerpt(body, length = 90) {
   return plain.length > length ? `${plain.slice(0, length - 1)}…` : plain;
 }
 
-module.exports = { FIELDS, STATUSES, isValidId, serializeNote, parseNote, countImages, excerpt };
+module.exports = {
+  FIELDS,
+  STATUSES,
+  isValidId,
+  isValidReplyId,
+  newReplyId,
+  isAssetReferenced,
+  serializeNote,
+  parseNote,
+  countImages,
+  excerpt,
+};
