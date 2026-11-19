@@ -28,9 +28,10 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
 4. Commit and push `.project/bookmarks.json` together with `.review/`.
 
 **Developer**
-1. Pull. The panel shows the notes, with screenshots inline.
+1. Pull. Click a bookmark in the panel. The note opens read-only, with screenshots inline. Click a screenshot to open it in the Windows image viewer.
 2. To jump to the activity, double-click the bookmark in Studio's Markers panel, or right-click it and choose Focus.
-3. Fix the issue and set the status to Resolved.
+3. Fix the issue. Then click **Mark resolved**, and use **Add reply** to say what you changed.
+4. Commit and push `.review/`.
 
 ## Reference
 
@@ -40,18 +41,32 @@ Studio's own bookmarks are not changed. The extension only reads `.project/bookm
 - **Show in Studio** (on a workflow, or at the top of a note) brings that workflow to the front in Studio.
 - **Notes without a bookmark** lists notes whose bookmark was deleted. Add a bookmark on the same activity again to re-attach the note, or delete the note.
 
+### Note view
+- **Read view.** An existing note opens read-only, rendered as formatted text.
+  - Click a screenshot to open it in the Windows default image viewer.
+  - **Edit note** switches to the editor. **Done** returns to the read view.
+  - A bookmark without a note opens straight in the editor.
+- **Status.** **Mark resolved** and **Reopen**, or the status list, change the status without opening the editor.
+- **Replies.** **Add reply** writes a reply under the note. A reply can hold formatting and screenshots, and shows its author and time.
+  - You can edit or delete only your own replies. Ownership is matched on `git config user.name`.
+  - The reviewer's note is never changed by a reply.
+
 ### Stored files
 ```
 <project>/
   .project/bookmarks.json              Studio's file (read only)
   .review/
     notes/<noteId>.md                  one note per bookmark: front matter + Markdown
-    assets/<noteId>/<timestamp>.png    screenshots, linked as ../assets/<noteId>/… in the note
+    replies/<noteId>/<time>-<id>.md    one file per reply: author, created, updated + Markdown
+    assets/<noteId>/<timestamp>.png    screenshots of the note and its replies
 ```
+- **Replies are separate files.** A reviewer editing a note and a developer replying never cause a Git conflict.
 - Notes are plain Markdown, so they read well on GitHub and Azure DevOps, and diff and merge like code.
 - The author of a new note is the project's `git config user.name`, or the Windows user name if Git has none.
 - **A bookmark deleted and added again on the same activity** gets a new id from Studio. The note re-attaches by matching workflow + activity.
-- **A note that is cleared while its status is Open** is removed. Removing a screenshot from a note deletes its file.
+- **A note that is cleared while its status is Open, and has no replies,** is removed.
+- **Removing a screenshot** deletes its file once neither the note nor a reply links it.
+- **Deleting a note** also deletes its replies and screenshots.
 - **Required:** `.review/` and `.project/bookmarks.json` must not be listed in the project's `.gitignore`.
 - **Recommended:** add `.review/assets/** binary` to `.gitattributes`.
 
@@ -65,7 +80,7 @@ Studio doesn't tell extensions which activity or bookmark is selected, and doesn
 ### Development
 | Command | What it does |
 |---|---|
-| `npm test` | Unit tests for bookmark parsing, the note format and re-linking (`src/core/`) |
+| `npm test` | Unit tests for `src/core/` (bookmark parsing, note format, re-linking) and controller tests that run the extension against a temporary project with a `vscode` mock (`test/helpers/vscode-mock.js`) |
 | `npm run build` | Bundles the webview (`webview/`) into `media/main.js` and `media/main.css` |
 | `npm run package` | Tests, builds and creates the `.vsix` |
 
