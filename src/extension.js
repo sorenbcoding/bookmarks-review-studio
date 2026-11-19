@@ -6,6 +6,7 @@ const { BookmarkStore, ReviewStore } = require('./stores');
 const { reconcile } = require('./core/reconcile');
 const { STATUSES, isValidId, isValidReplyId, newReplyId, countImages, excerpt } = require('./core/noteFile');
 const { authorName } = require('./git');
+const opener = require('./openFile');
 
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|bmp);base64,([A-Za-z0-9+/=]+)$/;
 const IMAGE_FILE = /^[\w.-]+\.(png|jpg|gif|webp|bmp)$/i;
@@ -374,17 +375,32 @@ class ReviewController {
     this.refreshLater();
   }
 
-  /** Opens a screenshot in the Windows default image viewer. Only files under .review/assets/ are allowed. */
+  /**
+   * Opens a screenshot in the Windows default image viewer. Only `<noteId>/<image file>` under
+   * .review/assets/ is accepted; the file path is built from the assets folder, never from the URL.
+   */
   async openImage(src) {
-    const base = `${this.assetBase}/assets/`;
-    if (typeof src !== 'string' || !this.assetBase || !src.startsWith(base)) return;
-    const [noteId, file, ...rest] = decodeURIComponent(src.slice(base.length).split(/[?#]/)[0]).split('/');
-    if (rest.length || !isValidId(noteId) || !IMAGE_FILE.test(file ?? '')) return;
-    const uri = vscode.Uri.joinPath(this.reviewStore.assetsDir, noteId, file);
-    const opened = await vscode.env.openExternal(uri);
-    log.appendLine(`Open image ${uri.fsPath}: ${opened ? 'opened' : 'refused by the host'}`);
-    if (!opened) {
-      vscode.window.showWarningMessage(`Could not open the screenshot in the image viewer — the host refused to open files. The file is at ${uri.fsPath}.`);
+    let decoded = '';
+    try {
+      decoded = decodeURIComponent(String(src ?? '').split(/[?#]/)[0]);
+    } catch {
+      // malformed escape: rejected below
+    }
+    const match = /\/assets\/([^/\\]+)\/([^/\\]+)$/.exec(decoded);
+    if (!match || !isValidId(match[1]) || !IMAGE_FILE.test(match[2])) {
+      log.appendLine(`Open image refused, not a screenshot under .review/assets/: ${src}`);
+      return;
+    }
+    const uri = vscode.Uri.joinPath(this.reviewStore.assetsDir, match[1], match[2]);
+    if (!(await this.reviewStore.exists(uri))) {
+      this.post({ type: 'notice', text: 'Screenshot file not found' });
+      return;
+    }
+    const { ok, via } = await opener.openWithDefaultApp(uri);
+    log.appendLine(`Open image ${uri.fsPath}: ${ok ? `opened (${via})` : 'failed'}`);
+    this.post({ type: 'notice', text: ok ? 'Opened in the image viewer' : 'Could not open the screenshot' });
+    if (!ok) {
+      vscode.window.showWarningMessage(`Could not open the screenshot in the image viewer — Windows did not start a viewer for the file. Open it from ${uri.fsPath}.`);
     }
   }
 
