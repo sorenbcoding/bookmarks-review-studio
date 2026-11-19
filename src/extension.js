@@ -1,12 +1,17 @@
 // Bookmarks Review: rich review notes (formatting + screenshots) for UiPath Studio bookmarks.
 // Studio's .project/bookmarks.json is only read. Notes live in <project>/.review/ and go into Git.
 const vscode = require('vscode');
+const fs = require('fs');
+const fsp = require('fs/promises');
+const os = require('os');
 const path = require('path');
 const { BookmarkStore, ReviewStore } = require('./stores');
 const { reconcile } = require('./core/reconcile');
 const { STATUSES, isValidId, isValidReplyId, newReplyId, countImages, excerpt } = require('./core/noteFile');
 const { authorName } = require('./git');
 const opener = require('./openFile');
+const archive = require('./core/archive');
+const { createZip } = require('./core/zip');
 
 const IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|bmp);base64,([A-Za-z0-9+/=]+)$/;
 const IMAGE_FILE = /^[\w.-]+\.(png|jpg|gif|webp|bmp)$/i;
@@ -16,6 +21,8 @@ const NOTE_ASSETS = '../assets/';
 const REPLY_ASSETS = '../../assets/';
 const CONFIG = 'bookmarksReview';
 const HIDE_ORPHANS = 'hideNotesWithoutBookmark';
+const ARCHIVE_FOLDER = 'archiveFolder';
+const RENDER_TIMEOUT_MS = 30000;
 
 /** @type {vscode.OutputChannel} */
 let log;
@@ -58,6 +65,8 @@ class ReviewController {
     this.orphans = [];
     this.notesById = new Map();
     this.queue = Promise.resolve();
+    this.pendingRenders = new Map();
+    this.renderSeq = 0;
     this.ready = this.init().catch((err) => log.appendLine(`Init failed: ${err?.stack ?? err}`));
   }
 
@@ -261,6 +270,24 @@ class ReviewController {
         break;
       case 'deleteOrphans':
         await this.deleteOrphans();
+        break;
+      case 'wrapUpInfo':
+        this.postWrapUpInfo();
+        break;
+      case 'chooseArchiveFolder':
+        await this.chooseArchiveFolder();
+        break;
+      case 'exportArchive':
+        await this.exportArchive(msg.remove);
+        break;
+      case 'reportRendered': {
+        const resolve = this.pendingRenders.get(msg.requestId);
+        this.pendingRenders.delete(msg.requestId);
+        resolve?.(msg.html && typeof msg.html === 'object' ? msg.html : null);
+        break;
+      }
+      case 'revealArchive':
+        if (this.lastArchive) await opener.revealInExplorer(this.lastArchive);
         break;
       case 'setHideOrphans':
         await this.setHideOrphans(msg.value === true);
@@ -474,6 +501,127 @@ class ReviewController {
       await this.context.globalState?.update(HIDE_ORPHANS, value);
     }
     this.postState();
+  }
+
+  // ---- Wrap up: export the review to a zip and remove notes from the project ----
+
+  /** Folder for archives: the last one chosen, else Documents. */
+  get archiveFolder() {
+    const chosen = this.context.globalState?.get(ARCHIVE_FOLDER);
+    if (typeof chosen === 'string' && chosen) return chosen;
+    const documents = path.join(os.homedir(), 'Documents');
+    return fs.existsSync(documents) ? documents : os.homedir();
+  }
+
+  postWrapUpInfo() {
+    this.post({ type: 'wrapUpInfo', folder: this.archiveFolder });
+  }
+
+  async chooseArchiveFolder() {
+    const picked = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: false,
+      defaultUri: vscode.Uri.file(this.archiveFolder),
+      openLabel: 'Save archives here',
+    });
+    if (picked?.[0]) await this.context.globalState?.update(ARCHIVE_FOLDER, picked[0].fsPath);
+    this.postWrapUpInfo();
+  }
+
+  /** Asks the panel to render Markdown with its Toast UI viewer. Resolves to { id: html }, or null. */
+  renderInPanel(sections) {
+    if (!sections.length) return Promise.resolve({});
+    if (!this.view) return Promise.resolve(null);
+    const requestId = ++this.renderSeq;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.pendingRenders.delete(requestId);
+        log.appendLine('The panel did not render the report in time; report.html shows the notes as plain text.');
+        resolve(null);
+      }, RENDER_TIMEOUT_MS);
+      this.pendingRenders.set(requestId, (html) => {
+        clearTimeout(timer);
+        resolve(html);
+      });
+      this.post({ type: 'renderReport', requestId, sections });
+    });
+  }
+
+  /**
+   * Writes <project>-review-<date>.zip (summary.md, report.html, .review/, studio-bookmarks.json) to the
+   * archive folder, then removes the chosen notes. Nothing is removed unless the archive was written.
+   * @param {'closed' | 'all' | 'none'} remove
+   */
+  async exportArchive(remove) {
+    if (!archive.REMOVE_MODES.includes(remove) || this.exporting) return;
+    this.exporting = true;
+    try {
+      await this.refresh();
+      const notes = [...this.attached.values(), ...this.orphans];
+      if (!notes.length) {
+        this.post({ type: 'archiveError', error: 'There are no review notes to archive.' });
+        return;
+      }
+      const replies = new Map();
+      for (const n of notes) replies.set(n.meta.noteId, await this.reviewStore.loadReplies(n.meta.noteId));
+      const groups = archive.collectEntries({ bookmarks: this.bookmarks, attached: this.attached, orphans: this.orphans, replies });
+      const projectName = path.basename(this.root.fsPath);
+      const exportedAt = new Date();
+      const info = { projectName, exportedAt: exportedAt.toISOString(), author: this.author, groups };
+
+      const data = new Map();
+      for (const f of await this.reviewStore.listFiles()) {
+        data.set(f.path, Buffer.from(await vscode.workspace.fs.readFile(f.uri)));
+      }
+      const entries = [...data].map(([p, buffer]) => ({ name: `.review/${p}`, data: buffer }));
+      try {
+        const bookmarksFile = vscode.Uri.joinPath(this.root, '.project', 'bookmarks.json');
+        entries.push({ name: 'studio-bookmarks.json', data: Buffer.from(await vscode.workspace.fs.readFile(bookmarksFile)) });
+      } catch {
+        // no bookmarks file
+      }
+
+      const rendered = await this.renderInPanel(archive.renderSections(groups));
+      let css = '';
+      try {
+        css = await fsp.readFile(path.join(this.context.extensionUri.fsPath, 'dist', 'report.css'), 'utf8');
+      } catch {
+        log.appendLine('dist/report.css not found; report.html has no styles.');
+      }
+      const readAsset = (noteId, file) => data.get(`assets/${noteId}/${file}`) ?? null;
+      entries.unshift(
+        { name: 'summary.md', data: archive.buildSummary(info) },
+        { name: 'report.html', data: archive.buildReportHtml({ ...info, rendered, css, readAsset }) }
+      );
+      const zip = createZip(entries, exportedAt);
+
+      const folder = this.archiveFolder;
+      await fsp.mkdir(folder, { recursive: true });
+      const name = archive.archiveName(projectName, exportedAt);
+      let target = path.join(folder, name);
+      for (let i = 2; fs.existsSync(target); i++) target = path.join(folder, name.replace(/\.zip$/, ` (${i}).zip`));
+      await fsp.writeFile(target, zip, { flag: 'wx' });
+      if ((await fsp.stat(target)).size !== zip.length) throw new Error(`the archive ${target} was not written completely`);
+      this.lastArchive = vscode.Uri.file(target);
+      log.appendLine(`Wrote review archive ${target} (${notes.length} notes, ${zip.length} bytes)`);
+
+      const ids = archive.notesToRemove(groups, remove);
+      await this.enqueue(async () => {
+        for (const id of ids) await this.reviewStore.deleteNote(id);
+      });
+      if (ids.length) log.appendLine(`Removed ${ids.length} notes after the export`);
+      this.post({ type: 'archived', file: target, removed: ids.length, kept: notes.length - ids.length });
+      await this.refresh();
+    } catch (err) {
+      log.appendLine(`Export failed: ${err?.stack ?? err}`);
+      this.post({
+        type: 'archiveError',
+        error: `Could not write the review archive — ${err?.message ?? err}. No notes were removed. Choose another folder and try again.`,
+      });
+    } finally {
+      this.exporting = false;
+    }
   }
 
   html(webview) {

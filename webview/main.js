@@ -18,6 +18,7 @@ let loading = false;
 let dirty = false;
 let saveTimer;
 let requestSeq = 0;
+let wrapUp = null; // { folder, remove, phase: 'form' | 'exporting' | 'done', result, error } while the wrap-up view is shown
 const pendingImages = new Map();
 
 // Per-viewer UI preferences, kept by the webview host between sessions.
@@ -97,6 +98,7 @@ function setSaveState(text) {
 function renderList() {
   destroyEditors();
   current = null;
+  wrapUp = null;
   app.replaceChildren();
   if (!state) return app.append(h('p', { class: 'muted' }, 'Loading…'));
   if (!state.hasProject) return app.append(h('p', { class: 'muted' }, 'Open a UiPath project to see its bookmarks.'));
@@ -141,6 +143,11 @@ function renderList() {
           : h('button', { class: 'link small', title: 'Bring this workflow to the front in Studio', onclick: () => showInStudio(wf.file) }, 'Show in Studio'))
     );
     app.append(h('ul', { class: `rows${current ? ' current' : ''}` }, wf.bookmarks.map((b) => row(b))));
+  }
+
+  if (noteSummaries().length) {
+    app.append(h('div', { class: 'wrapup-entry' },
+      h('button', { class: 'btn', title: 'Export all notes to a zip archive and remove them from the project', onclick: startWrapUp }, 'Wrap up review…')));
   }
 
   // Notes whose bookmark was deleted in Studio. With "This workflow only", only that workflow's.
@@ -190,6 +197,123 @@ function row(b) {
 
 function open(target) {
   vscode.postMessage({ type: 'open', ...target });
+}
+
+// ---- wrap up: export the review to an archive and remove notes ----------------
+
+/** Summaries of every note: on a bookmark or without one. */
+function noteSummaries() {
+  if (!state) return [];
+  return [...state.workflows.flatMap((w) => w.bookmarks).filter((b) => b.note).map((b) => b.note), ...state.orphans];
+}
+
+function startWrapUp() {
+  destroyEditors();
+  current = null;
+  wrapUp = { folder: null, remove: 'closed', phase: 'form' };
+  vscode.postMessage({ type: 'wrapUpInfo' });
+  renderWrapUp();
+}
+
+const REMOVE_OPTIONS = [
+  { value: 'closed', label: "Remove resolved and won't fix notes", hint: 'Open notes stay for the next round.' },
+  { value: 'all', label: 'Remove all notes', hint: 'The project has no review notes afterwards.' },
+  { value: 'none', label: 'Keep all notes', hint: 'Only export the archive.' },
+];
+
+function removalCount(notes, mode) {
+  if (mode === 'all') return notes.length;
+  if (mode === 'closed') return notes.filter((n) => n.status === 'resolved' || n.status === 'wontfix').length;
+  return 0;
+}
+
+function renderWrapUp() {
+  const notes = noteSummaries();
+  const by = (st) => notes.filter((n) => (n.status || 'open') === st).length;
+  const replies = notes.reduce((n, x) => n + (x.replyCount || 0), 0);
+  const shots = notes.reduce((n, x) => n + (x.imageCount || 0), 0);
+  const top = h('div', { class: 'topbar' },
+    h('button', { class: 'btn back', onclick: renderList, disabled: wrapUp.phase === 'exporting' }, '← All bookmarks'));
+
+  if (wrapUp.phase === 'done') {
+    const r = wrapUp.result;
+    app.replaceChildren(top,
+      h('h2', {}, 'Review archived'),
+      h('p', {}, 'Saved ', h('span', { class: 'path' }, r.file), '.'),
+      h('p', {}, r.removed
+        ? `Removed ${plural(r.removed, 'note')} from the project${r.kept ? `, kept ${r.kept}` : ''}. Commit the change to .review/ to finish the review in Git.`
+        : 'No notes were removed.'),
+      h('div', { class: 'actions' },
+        h('button', { class: 'btn primary', onclick: () => vscode.postMessage({ type: 'revealArchive' }) }, 'Show in Explorer'),
+        h('button', { class: 'btn', onclick: renderList }, 'Done')));
+    return;
+  }
+
+  const toRemove = removalCount(notes, wrapUp.remove);
+  const exportLabel = toRemove ? `Export and remove ${plural(toRemove, 'note')}` : 'Export archive';
+  const exportNow = () => {
+    wrapUp.phase = 'exporting';
+    wrapUp.error = null;
+    vscode.postMessage({ type: 'exportArchive', remove: wrapUp.remove });
+    renderWrapUp();
+  };
+  app.replaceChildren(top,
+    h('h2', {}, 'Wrap up review'),
+    h('p', { class: 'muted' },
+      `${plural(notes.length, 'note')}: ${by('open')} open, ${by('resolved')} resolved, ${by('wontfix')} won't fix · ${replies === 1 ? '1 reply' : `${replies} replies`} · ${plural(shots, 'screenshot')}`),
+    h('p', {}, 'The archive is a zip file with:'),
+    h('ul', { class: 'wrapup-list' },
+      h('li', {}, h('strong', {}, 'report.html'), ': every note with its replies and screenshots, for any browser.'),
+      h('li', {}, h('strong', {}, 'summary.md'), ': the same as Markdown.'),
+      h('li', {}, h('strong', {}, '.review/'), ': the note files. Unzip into a project to restore them.'),
+      h('li', {}, h('strong', {}, 'studio-bookmarks.json'), ": Studio's bookmarks at the time.")),
+    h('h3', { class: 'section-title' }, 'Save to'),
+    h('div', { class: 'pathbar' },
+      h('span', { class: 'path small', id: 'archiveFolder' }, wrapUp.folder ?? '…'),
+      h('button', { class: 'link small', onclick: () => vscode.postMessage({ type: 'chooseArchiveFolder' }), disabled: wrapUp.phase === 'exporting' }, 'Change…')),
+    h('h3', { class: 'section-title' }, 'After the export'),
+    h('div', { class: 'radios', role: 'radiogroup' }, REMOVE_OPTIONS.map((o) =>
+      h('label', { class: 'radio' },
+        h('input', { type: 'radio', name: 'remove', value: o.value, checked: wrapUp.remove === o.value, disabled: wrapUp.phase === 'exporting', onchange: () => {
+          wrapUp.remove = o.value;
+          renderWrapUp();
+        } }),
+        h('span', {}, o.label, h('span', { class: 'muted small hint' }, `${o.hint} ${removalCount(notes, o.value) ? `(${removalCount(notes, o.value)})` : ''}`.trim()))))),
+    h('p', { class: 'muted small' }, 'Notes are removed only after the archive is saved. Studio\'s bookmarks are not changed.'),
+    wrapUp.error ? h('p', { class: 'error' }, wrapUp.error) : null,
+    h('div', { class: 'actions' },
+      wrapUp.phase === 'exporting'
+        ? h('span', { class: 'muted' }, 'Exporting…')
+        : toRemove
+          ? confirmButton({
+              label: exportLabel,
+              cls: 'btn primary',
+              question: `Remove ${plural(toRemove, 'note')} from the project after the export?`,
+              yes: exportLabel,
+              onConfirm: exportNow,
+            })
+          : h('button', { class: 'btn primary', onclick: exportNow, disabled: !notes.length }, exportLabel)));
+}
+
+/** Renders Markdown pieces to HTML with the Toast UI viewer, for report.html. */
+function renderReport({ requestId, sections }) {
+  const html = {};
+  const host = h('div', { class: 'render-host', 'aria-hidden': 'true' });
+  document.body.append(host);
+  try {
+    for (const { id, markdown } of sections) {
+      const el = h('div');
+      host.append(el);
+      const viewer = Editor.factory({ el, viewer: true, initialValue: String(markdown ?? ''), usageStatistics: false });
+      const contents = el.querySelector('.toastui-editor-contents');
+      for (const node of contents?.querySelectorAll('[data-nodeid]') ?? []) node.removeAttribute('data-nodeid');
+      html[id] = contents?.innerHTML ?? '';
+      viewer.destroy?.();
+    }
+  } finally {
+    host.remove();
+  }
+  vscode.postMessage({ type: 'reportRendered', requestId, html });
 }
 
 // ---- note view: read mode (default for existing notes) and edit mode ------------
@@ -494,7 +618,9 @@ window.addEventListener('message', ({ data: msg }) => {
   switch (msg.type) {
     case 'state':
       state = msg;
-      if (!current) {
+      if (wrapUp) {
+        if (wrapUp.phase === 'form') renderWrapUp();
+      } else if (!current) {
         renderList();
       } else if (current.bookmark) {
         const live = state.workflows.flatMap((w) => w.bookmarks).find((b) => b.id === current.bookmark.id);
@@ -510,7 +636,7 @@ window.addEventListener('message', ({ data: msg }) => {
       break;
     case 'activeWorkflow':
       if (state) state.activeWorkflow = msg.file;
-      if (state && !current) renderList();
+      if (state && !current && !wrapUp) renderList();
       break;
     case 'note':
       renderNote(msg);
@@ -546,6 +672,29 @@ window.addEventListener('message', ({ data: msg }) => {
     case 'noteChangedOnDisk':
       // Someone else's change (e.g. git pull). Reload unless the user is typing a note or a reply.
       if (current?.noteId === msg.noteId && !dirty && !replyDraft) reopen();
+      break;
+    case 'wrapUpInfo':
+      if (wrapUp) {
+        wrapUp.folder = msg.folder;
+        document.getElementById('archiveFolder')?.replaceChildren(msg.folder);
+      }
+      break;
+    case 'renderReport':
+      renderReport(msg);
+      break;
+    case 'archived':
+      if (wrapUp) {
+        wrapUp.phase = 'done';
+        wrapUp.result = msg;
+        renderWrapUp();
+      }
+      break;
+    case 'archiveError':
+      if (wrapUp) {
+        wrapUp.phase = 'form';
+        wrapUp.error = msg.error;
+        renderWrapUp();
+      }
       break;
     case 'deleted':
       if (current?.noteId === msg.noteId) {
