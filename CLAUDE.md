@@ -64,4 +64,7 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 - `npm test`: unit tests for `src/core/`, plus controller tests (`test/controller.test.js`) that run the real controller against a temporary project on disk, with `vscode` replaced by `test/helpers/vscode-mock.js`.
 - `npm run build`: bundles the webview.
 - `npm run package`: test, build and create the `.vsix`.
+  - `scripts/package-readme.js` writes `dist/README.vsix.md`, the README in the package: only the light logo, as a relative path to a PNG inside the `.vsix`.
+  - vsce runs with `--readme-path dist/README.vsix.md --no-rewrite-relative-links`. Otherwise it points images at the private GitHub repo, which Studio's Details pane can't load. It rejects data URIs.
+  - Every README image must be listed in `.vscodeignore`; the script fails if not.
 - Brand check: `python ~/.claude/skills/sorenb-brand/scripts/brand_check.py . --category extension`.

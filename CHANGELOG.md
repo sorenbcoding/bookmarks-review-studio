@@ -16,6 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
   - You can edit or delete only your own replies.
   - The list shows the number of replies.
 
+### Fixed
+- The logo shows in the extension's Details pane in Studio. The packaged README now loads it from the `.vsix` instead of the private GitHub repo. ([#5](https://github.com/sorenbcoding/bookmarks-review-studio/issues/5))
+
 ### Changed
 - The extension is now `sorenbcoding.sorenb-studio-bookmarks-review`, displayed as *Bookmarks Review for UiPath Studio*, with the SorenB product logo. Uninstall the earlier `bookmarks-review.bookmarks-review` before installing it. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
 - The panel uses the SorenB brand tokens. The violet accent marks the current workflow, links and focus. Status badges are outlined in the brand status colours, so they keep their contrast in dark themes. ([#1](https://github.com/sorenbcoding/bookmarks-review-studio/issues/1))
