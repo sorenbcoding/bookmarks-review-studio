@@ -7,7 +7,7 @@ const os = require('os');
 const path = require('path');
 const { BookmarkStore, ReviewStore } = require('./stores');
 const { reconcile } = require('./core/reconcile');
-const { STATUSES, isValidId, isValidReplyId, newReplyId, countImages, excerpt } = require('./core/noteFile');
+const { STATUSES, isValidId, isValidReplyId, newReplyId, isAssetReferenced, countImages, excerpt } = require('./core/noteFile');
 const { authorName } = require('./git');
 const opener = require('./openFile');
 const archive = require('./core/archive');
@@ -25,6 +25,12 @@ const REMOVE_BOOKMARKS = 'removeBookmarksOnWrapUp';
 const SETTINGS = [HIDE_ORPHANS, REMOVE_BOOKMARKS];
 const ARCHIVE_FOLDER = 'archiveFolder';
 const RENDER_TIMEOUT_MS = 30000;
+// A pasted screenshot is written before the editor inserts its link; until a saved text links it
+// (or this time passes), cleanup leaves it alone, so an autosave already in flight can't delete it.
+const FRESH_ASSET_MS = 10 * 60 * 1000;
+
+/** Valid note ids from a webview message, as a Set. */
+const idSet = (ids) => new Set(Array.isArray(ids) ? ids.filter(isValidId) : []);
 
 /** @type {vscode.OutputChannel} */
 let log;
@@ -41,6 +47,22 @@ function activate(context) {
 }
 
 function deactivate() {}
+
+/** The archived files of one note, from the export snapshot (keys as in ReviewStore.listFiles). */
+function snapshotOf(data, noteId) {
+  const files = new Map();
+  for (const [key, buffer] of data) {
+    if (key === `notes/${noteId}.md` || key.startsWith(`replies/${noteId}/`) || key.startsWith(`assets/${noteId}/`)) files.set(key, buffer);
+  }
+  return files;
+}
+
+/** @param {Map<string, Buffer>} a @param {Map<string, Buffer>} b */
+function sameFiles(a, b) {
+  if (a.size !== b.size) return false;
+  for (const [key, buffer] of a) if (!b.get(key)?.equals(buffer)) return false;
+  return true;
+}
 
 async function findProjectRoot() {
   for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -68,6 +90,8 @@ class ReviewController {
     this.notesById = new Map();
     this.queue = Promise.resolve();
     this.pendingRenders = new Map();
+    /** @type {Map<string, number>} '<noteId>/<file>' → time the screenshot was saved, until a saved text links it */
+    this.freshAssets = new Map();
     this.renderSeq = 0;
     this.ready = this.init().catch((err) => log.appendLine(`Init failed: ${err?.stack ?? err}`));
   }
@@ -261,7 +285,7 @@ class ReviewController {
         await this.deleteReply(msg);
         break;
       case 'discardDraft':
-        if (isValidId(msg.noteId)) await this.enqueue(() => this.cleanupAssets(msg.noteId));
+        if (isValidId(msg.noteId)) await this.enqueue(() => this.cleanupAssets(msg.noteId, { discard: true }));
         break;
       case 'openImage':
         await this.openImage(msg.src);
@@ -273,7 +297,7 @@ class ReviewController {
         await this.deleteNote(msg.noteId);
         break;
       case 'deleteOrphans':
-        await this.deleteOrphans();
+        await this.deleteOrphans(idSet(msg.noteIds));
         break;
       case 'wrapUpInfo':
         this.postWrapUpInfo();
@@ -307,7 +331,7 @@ class ReviewController {
         this.postSettings();
         break;
       case 'deleteAll':
-        await this.deleteAll(msg.withBookmarks === true);
+        await this.deleteAll(msg.withBookmarks === true, idSet(msg.noteIds), new Set(Array.isArray(msg.bookmarkIds) ? msg.bookmarkIds.filter(isValidId) : []));
         break;
       case 'openWorkflow':
         await this.openWorkflow(msg.file);
@@ -340,11 +364,23 @@ class ReviewController {
     });
   }
 
-  /** Deletes screenshots of a note that neither the note nor its replies reference any more. */
-  async cleanupAssets(noteId) {
+  /**
+   * Deletes screenshots of a note that neither the note nor its replies reference any more. Freshly pasted
+   * screenshots are kept until a saved text links them, unless a draft is being discarded.
+   */
+  async cleanupAssets(noteId, { discard = false } = {}) {
     const note = await this.reviewStore.readNote(noteId);
     const replies = await this.reviewStore.loadReplies(noteId);
-    await this.reviewStore.cleanupAssets(noteId, [note?.body ?? '', ...replies.map((r) => r.body)]);
+    const texts = [note?.body ?? '', ...replies.map((r) => r.body)];
+    const keep = new Set();
+    const now = Date.now();
+    for (const [key, time] of this.freshAssets) {
+      const [id, file] = key.split('/');
+      if (id !== noteId) continue;
+      if (discard || now - time > FRESH_ASSET_MS || isAssetReferenced(noteId, file, texts)) this.freshAssets.delete(key);
+      else keep.add(file);
+    }
+    await this.reviewStore.cleanupAssets(noteId, texts, keep);
   }
 
   async saveNote({ bookmarkId, noteId, body, status }) {
@@ -358,7 +394,7 @@ class ReviewController {
     // An empty, open note on a live bookmark, without replies, is the same as no note.
     if (!markdown && newStatus === 'open' && !hasReplies && (bookmark || !existing)) {
       if (existing) await this.reviewStore.deleteNote(noteId);
-      else await this.reviewStore.cleanupAssets(noteId, []);
+      else await this.cleanupAssets(noteId);
       this.post({ type: 'saved', noteId, meta: null, removed: Boolean(existing) });
       return this.refreshLater();
     }
@@ -475,6 +511,7 @@ class ReviewController {
     }
     const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
     const uri = await this.reviewStore.saveImage(noteId, buffer, ext);
+    this.freshAssets.set(`${noteId}/${path.basename(uri.fsPath)}`, Date.now());
     log.appendLine(`Saved screenshot ${uri.fsPath}`);
     this.post({ type: 'imageSaved', requestId, src: this.view.webview.asWebviewUri(uri).toString() });
   }
@@ -488,10 +525,10 @@ class ReviewController {
     await this.refresh();
   }
 
-  /** Deletes every note whose bookmark is gone, as of the last refresh. */
-  async deleteOrphans() {
+  /** Deletes the confirmed notes (`noteIds`) that are still without a bookmark. */
+  async deleteOrphans(noteIds) {
     await this.refresh();
-    const ids = this.orphans.map((n) => n.meta.noteId);
+    const ids = this.orphans.map((n) => n.meta.noteId).filter((id) => noteIds.has(id));
     await this.enqueue(async () => {
       for (const id of ids) await this.reviewStore.deleteNote(id);
     });
@@ -528,16 +565,16 @@ class ReviewController {
   }
 
   /**
-   * Deletes every note with its replies and screenshots and, with `withBookmarks`, every Studio bookmark
-   * except transient ones. The panel asks for confirmation first. Git keeps the history.
+   * Deletes the confirmed notes (`noteIds`) with their replies and screenshots and, with `withBookmarks`,
+   * the confirmed Studio bookmarks (`bookmarkIds`). Anything added after the confirmation stays.
    */
-  async deleteAll(withBookmarks) {
+  async deleteAll(withBookmarks, noteIds, bookmarkIds) {
     await this.refresh();
-    const ids = [...this.attached.values(), ...this.orphans].map((n) => n.meta.noteId);
+    const ids = [...this.attached.values(), ...this.orphans].map((n) => n.meta.noteId).filter((id) => noteIds.has(id));
     let removedBookmarks = 0;
     await this.enqueue(async () => {
       for (const id of ids) await this.reviewStore.deleteNote(id);
-      if (withBookmarks) removedBookmarks = await this.bookmarkStore.removeAllExcept(new Set());
+      if (withBookmarks && bookmarkIds.size) removedBookmarks = await this.bookmarkStore.removeOnly(bookmarkIds);
     });
     log.appendLine(`Deleted all notes (${ids.length})${withBookmarks ? ` and ${removedBookmarks} bookmarks` : ''}`);
     for (const noteId of ids) this.post({ type: 'deleted', noteId });
@@ -648,9 +685,21 @@ class ReviewController {
       this.lastArchive = vscode.Uri.file(target);
       log.appendLine(`Wrote review archive ${target} (${notes.length} notes, ${zip.length} bytes)`);
 
-      const ids = archive.notesToRemove(groups, remove);
+      // Remove only notes whose files are exactly as archived: a note changed during the export
+      // (e.g. by a git pull) is kept, so nothing is removed that the archive doesn't hold.
+      const candidates = archive.notesToRemove(groups, remove);
+      const ids = [];
+      let changed = 0;
       await this.enqueue(async () => {
-        for (const id of ids) await this.reviewStore.deleteNote(id);
+        for (const id of candidates) {
+          if (sameFiles(await this.reviewStore.noteFiles(id), snapshotOf(data, id))) {
+            await this.reviewStore.deleteNote(id);
+            ids.push(id);
+          } else {
+            changed++;
+            log.appendLine(`Kept note ${id}: it changed during the export, so the archive does not hold its current version`);
+          }
+        }
       });
       if (ids.length) log.appendLine(`Removed ${ids.length} notes after the export`);
 
@@ -664,7 +713,7 @@ class ReviewController {
         });
         if (removedBookmarks) log.appendLine(`Removed ${removedBookmarks} bookmarks from .project/bookmarks.json`);
       }
-      this.post({ type: 'archived', file: target, removed: ids.length, kept: notes.length - ids.length, removedBookmarks });
+      this.post({ type: 'archived', file: target, removed: ids.length, kept: notes.length - ids.length, changed, removedBookmarks });
       await this.refresh();
     } catch (err) {
       log.appendLine(`Export failed: ${err?.stack ?? err}`);

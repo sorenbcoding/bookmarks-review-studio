@@ -68,6 +68,10 @@ UiPath Studio 26 extension (VS Code-compatible extension host, API 1.95, JavaScr
 - **The Settings view** (`renderSettings` in `webview/main.js`) holds:
   - checkboxes for the two settings;
   - a Delete section with **Delete all notes** and **Delete all notes and bookmarks** (`deleteAll` in `src/extension.js`). Each asks for confirmation, with the counts.
+- **Delete only what was confirmed or archived:**
+  - **Bulk deletes:** `deleteOrphans` and `deleteAll` take the note ids, and bookmark ids, that the panel showed in its confirmation. The controller deletes only those that still qualify.
+  - **Wrap-up:** a note is removed only if its files (`ReviewStore.noteFiles`) are byte-identical to the archived snapshot. A note that changed during the export is kept and reported.
+  - **Fresh screenshots:** a pasted screenshot is protected from cleanup (`freshAssets`) until a saved text links it, for at most 10 minutes, so an autosave already in flight can't delete it. `discardDraft` ignores the protection.
 - **Confirmations are shown in the panel** (`confirmButton` in `webview/main.js`), not through `showWarningMessage({ modal: true })`. Host dialogs are not verified in Studio.
 - **Note view:**
   - Existing notes open in the read view (Toast UI viewer). A bookmark without a note opens in the editor.

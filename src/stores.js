@@ -48,6 +48,20 @@ class BookmarkStore {
     return result.removed;
   }
 
+  /** Removes only the bookmarks in `ids` (the ones the user confirmed). @returns {Promise<number>} removed */
+  async removeOnly(ids) {
+    let text;
+    try {
+      text = decode(await fs.readFile(this.uri));
+    } catch {
+      return 0;
+    }
+    const keep = new Set(parseBookmarks(text).map((b) => b.id).filter((id) => !ids.has(id)));
+    const result = removeBookmarks(text, keep);
+    if (result.removed) await fs.writeFile(this.uri, Buffer.from(result.text, 'utf8'));
+    return result.removed;
+  }
+
   watch(onChange) {
     const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(this.root, '.project/bookmarks.json'));
     let timer;
@@ -231,7 +245,27 @@ class ReviewStore {
   }
 
   /** Deletes screenshots of a note that neither the note body nor any reply still references. */
-  async cleanupAssets(noteId, texts) {
+  /**
+   * Every file that belongs to a note (its note file, replies and screenshots), keyed as in listFiles().
+   * @returns {Promise<Map<string, Buffer>>}
+   */
+  async noteFiles(noteId) {
+    const files = new Map();
+    const read = async (uri, key) => {
+      try {
+        files.set(key, Buffer.from(await fs.readFile(uri)));
+      } catch {
+        // gone
+      }
+    };
+    await read(this.noteUri(noteId), `notes/${noteId}.md`);
+    for (const f of await this.listFiles(vscode.Uri.joinPath(this.repliesDir, noteId), `replies/${noteId}/`)) await read(f.uri, f.path);
+    for (const f of await this.listFiles(vscode.Uri.joinPath(this.assetsDir, noteId), `assets/${noteId}/`)) await read(f.uri, f.path);
+    return files;
+  }
+
+  /** Deletes screenshots of a note that no text references, except the file names in `keep`. */
+  async cleanupAssets(noteId, texts, keep = new Set()) {
     const dir = vscode.Uri.joinPath(this.assetsDir, noteId);
     let entries;
     try {
@@ -241,7 +275,7 @@ class ReviewStore {
     }
     let kept = 0;
     for (const [name, type] of entries) {
-      if (type === vscode.FileType.File && !isAssetReferenced(noteId, name, texts)) {
+      if (type === vscode.FileType.File && !keep.has(name) && !isAssetReferenced(noteId, name, texts)) {
         await fs.delete(vscode.Uri.joinPath(dir, name)).then(undefined, () => {});
       } else {
         kept++;
