@@ -1,0 +1,32 @@
+{
+  "name": "bookmarks-review-probe3",
+  "displayName": "Bookmarks Review – Probe 3 (Git and PR integration)",
+  "description": "Probe 3: which Git, issue and pull-request routes can an extension use inside Studio?",
+  "version": "0.0.1",
+  "publisher": "bookmarks-review",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": ["Other"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "bookmarksProbe3", "title": "Git Probe", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "bookmarksProbe3": [
+        { "type": "webview", "id": "bookmarksProbe3.view", "name": "Git probe" }
+      ]
+    }
+  },
+  "scripts": {
+    "package": "npx --yes @vscode/vsce package --skip-license --allow-missing-repository"
+  }
+}
