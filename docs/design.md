@@ -70,6 +70,30 @@ What this means for the UI:
 - The panel follows the workflow in front, and offers "Show in Studio" to bring a workflow forward.
 - Focusing the exact activity stays with Studio's Markers panel.
 
+## Git, issues and pull requests (probe 3)
+Studio's own source control has no API. Probe 3 (#25, results in `research/results/probe3/`) checked the other routes in Studio 2026, with a project on a Bitbucket remote.
+
+| Route | Result |
+|---|---|
+| `git` command line | **Works**, from the extension host's PATH: version, HEAD, branch, `origin`, `status`, `diff`. The repo root was the project folder. Not every machine has `git` installed, so features need a fallback |
+| Reading `.git` directly | **Works**: HEAD and the `origin` URL from `config` |
+| `vscode.git` extension API | **Not available**. No Git extension is loaded |
+| `vscode.authentication` | **`github` and `microsoft` providers exist**, not signed in. An interactive sign-in hasn't been tried |
+| `SecretStorage` | **Works** |
+| `gh` command line | Found and signed in on the developer's machine. Not something to rely on for reviewers |
+| `az` command line | Not installed |
+| Opening an `https://` URL | **Works** through `openExternal`, a link in the panel, and PowerShell `Start-Process` |
+| Pre-filled GitHub "new issue" URL | **Works up to about 3 KB**: title and body arrived intact, including æøå, `&`, `#`, quotes, a table and line breaks. **About 12 KB failed** (GitHub rejects the URL), so a body must be capped at a few KB |
+| Clipboard | **Works**: the text read back and pasted elsewhere was identical, including æøå and line breaks |
+| `.review/` in Studio's commit dialog | **Listed**. Reviewers commit notes through Studio as usual |
+
+What this means:
+- **Pre-filled browser pages** are the cheapest way to create an issue or a PR description, with no sign-in in the extension. The body must be capped and screenshots linked, not uploaded.
+- **Copying the review summary to the clipboard** works and is host-independent.
+- **"Outdated" notes and branch info** can use the `git` command line, with `.git` as a fallback for the branch.
+- **API integration** could use Studio's `github` or `microsoft` sign-in. That's an option for creating issues with a number returned, once an interactive sign-in has been tested.
+- **The test project's remote is Bitbucket.** It has no pre-filled issue URL that the probe supports, so the issue tracker used alongside it (for example Jira) decides what "create issue" should open.
+
 ## Wrapping up a review
 - **Wrap up review…** exports the review to a zip archive, then removes notes from the project. The user chooses which each time: resolved and won't fix, all, or none.
 - **Contents:** `report.html`, a page that opens in any browser with the screenshots embedded, plus `summary.md`, the `.review/` files (unzip to restore) and a copy of Studio's bookmarks.
