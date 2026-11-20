@@ -1,0 +1,56 @@
+07:40:51.681 [init] Activated. Host "Visual Studio Code" API 1.95.0, Node v24.22.2
+07:40:51.684 [auto] Checking gitCli…
+07:40:53.365 [auto] gitCli {"where":{"ok":true,"code":0,"killed":false,"ms":141,"stdout":"%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe","stderr":""},"version":{"ok":true,"code":0,"killed":false,"ms":145,"stdout":"git version 2.51.2.windows.1","stderr":""},"insideWorkTree":{"ok":true,"code":0,"killed":false,"ms":117,"stdout":"true","stderr":""},"topLevelIsProject":{"ok":true,"code":0,"killed":false,"ms":131,"stdout":"<redacted>","stderr":"","relation":"same as project"},"head":{"ok":true,"isSha":true,"ms":123,"stderr":""},"branch":{"ok":true,"present":true,"length":48,"ms":119},"origin":{"ok":true,"remote":{"parsed":true,"scheme":"scp-ssh","host":"bitbucket.org","kind":"bitbucket","pathSegments":2,"hasUserInfo":false,"hasPassword":false},"ms":127},"remoteCount":1,"reviewStatus":{"ok":true,"changedFiles":0,"ms":125},"reviewIgnored":{"code":1,"meaning":"not ignored"},"userNameSet":true,"diffQuiet":{"code":1,"ms":129,"note":"exit 1 = differences, 0 = none, other = error"},"lastCommitDate":"2026-11-19T08:44:59+01:00","pathEntriesWithGit":["C:\\Program Files\\GitHub CLI\\","%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd"],"commonInstall":[{"path":"C:\\Program Files\\Git\\cmd\\git.exe","exists":false},{"path":"%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe","exists":true}]}
+07:40:53.369 [auto] Checking dotGit…
+07:40:53.370 [auto] dotGit {"found":true,"levelsUp":0,"isFile":false,"head":{"kind":"branch","refLength":64},"originFromConfig":{"parsed":true,"scheme":"scp-ssh","host":"bitbucket.org","kind":"bitbucket","pathSegments":2,"hasUserInfo":false,"hasPassword":false}}
+07:40:53.388 [auto] Checking gitExtension…
+07:40:53.388 [auto] gitExtension {"gitLike":[],"vscodeGit":false,"scm":"function"}
+07:40:53.409 [auto] Checking authentication…
+07:40:53.418 [auto] authentication {"github":{"available":true,"signedIn":false},"microsoft":{"available":true,"signedIn":false}}
+07:40:53.431 [auto] Checking secretStorage…
+07:40:53.446 [auto] secretStorage {"works":true,"after":"deleted"}
+07:40:53.449 [auto] Checking ghAndAz…
+07:40:54.243 [auto] ghAndAz {"ghWhere":{"ok":true,"code":0,"killed":false,"ms":91,"stdout":"…\\gh.exe","stderr":""},"ghVersion":"gh version 2.102.0 (2026-09-30)","ghAuth":{"code":0,"loggedIn":true,"ms":501},"azWhere":{"ok":false,"code":1,"killed":false,"ms":81,"stdout":"","stderr":"INFO: Could not find files for the given pattern(s)."}}
+07:40:54.245 [auto] Automatic checks done
+07:41:09.886 [manual] RUN A: openExternal: plain https URL (this probe's public repo)
+07:41:09.919 [manual] A: openExternal returned true {"urlLength":55}
+07:41:32.637 [RESULT] A = Worked (Opened my github with )
+07:41:33.757 [RESULT] A = Worked (Opened my github with )
+07:41:46.953 [RESULT] A = Worked (Opened my github with bookmarks-review)
+07:42:04.107 [RESULT] A = Worked (Opened my github with bookmarks-review-studio repo)
+07:42:06.935 [manual] RUN B: openExternal: pre-filled GitHub "new issue", about 3 KB
+07:42:06.961 [manual] B: openExternal returned true {"urlLength":2875}
+07:42:24.453 [RESULT] B = Worked
+07:42:53.449 [manual] RUN C: openExternal: pre-filled GitHub "new issue", about 12 KB
+07:42:53.480 [manual] C: openExternal returned true {"urlLength":11836}
+07:43:03.134 [RESULT] C = Error
+07:43:32.999 [manual] D: the panel saw the link click (the browser may or may not have opened)
+07:43:41.803 [RESULT] D = Worked (Opened my github with bookmarks-review-studio repo)
+07:43:58.478 [manual] RUN E: PowerShell Start-Process with the pre-filled 3 KB URL
+07:43:58.863 [manual] E: PowerShell finished {"ok":true,"code":0,"stderr":"","urlLength":2875}
+07:44:11.368 [RESULT] E = Worked (Pre-filled issue opened for creation. I have submitted the issue.)
+07:44:29.577 [manual] RUN F: openExternal: pre-filled "new issue" on THIS project's remote
+07:44:29.578 [manual] F: no supported remote (kind bitbucket)
+07:44:40.140 [RESULT] F = Nothing happened
+07:44:44.358 [manual] RUN G: Clipboard: copy a sample review summary, then paste it in Notepad or below
+07:44:44.393 [manual] G: clipboard written; read back identical {"length":123}
+07:45:05.606 [manual] RUN H: Commit dialog: does Studio list .review/probe3/ files? (Do not commit)
+07:45:05.608 [manual] H: probe files saved under .review/probe3/. Open Studio's commit dialog and check the file list; close it without committing.
+07:45:30.061 [RESULT] H = Worked
+07:45:53.872 [manual] RUN G: Clipboard: copy a sample review summary, then paste it in Notepad or below
+07:45:53.900 [manual] G: clipboard written; read back identical {"length":123}
+07:45:56.644 [manual] G: paste into the panel matches what was copied {"length":123}
+07:45:58.979 [RESULT] G = Worked
+07:46:13.374 [auto] Checking gitCli…
+07:46:14.849 [auto] gitCli {"where":{"ok":true,"code":0,"killed":false,"ms":98,"stdout":"%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe","stderr":""},"version":{"ok":true,"code":0,"killed":false,"ms":116,"stdout":"git version 2.51.2.windows.1","stderr":""},"insideWorkTree":{"ok":true,"code":0,"killed":false,"ms":112,"stdout":"true","stderr":""},"topLevelIsProject":{"ok":true,"code":0,"killed":false,"ms":112,"stdout":"<redacted>","stderr":"","relation":"same as project"},"head":{"ok":true,"isSha":true,"ms":111,"stderr":""},"branch":{"ok":true,"present":true,"length":48,"ms":114},"origin":{"ok":true,"remote":{"parsed":true,"scheme":"scp-ssh","host":"bitbucket.org","kind":"bitbucket","pathSegments":2,"hasUserInfo":false,"hasPassword":false},"ms":119},"remoteCount":1,"reviewStatus":{"ok":true,"changedFiles":2,"ms":117},"reviewIgnored":{"code":1,"meaning":"not ignored"},"userNameSet":true,"diffQuiet":{"code":1,"ms":115,"note":"exit 1 = differences, 0 = none, other = error"},"lastCommitDate":"2026-11-19T08:44:59+01:00","pathEntriesWithGit":["C:\\Program Files\\GitHub CLI\\","%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd"],"commonInstall":[{"path":"C:\\Program Files\\Git\\cmd\\git.exe","exists":false},{"path":"%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe","exists":true}]}
+07:46:14.851 [auto] Checking dotGit…
+07:46:14.851 [auto] dotGit {"found":true,"levelsUp":0,"isFile":false,"head":{"kind":"branch","refLength":64},"originFromConfig":{"parsed":true,"scheme":"scp-ssh","host":"bitbucket.org","kind":"bitbucket","pathSegments":2,"hasUserInfo":false,"hasPassword":false}}
+07:46:14.882 [auto] Checking gitExtension…
+07:46:14.883 [auto] gitExtension {"gitLike":[],"vscodeGit":false,"scm":"function"}
+07:46:14.915 [auto] Checking authentication…
+07:46:14.919 [auto] authentication {"github":{"available":true,"signedIn":false},"microsoft":{"available":true,"signedIn":false}}
+07:46:14.953 [auto] Checking secretStorage…
+07:46:14.966 [auto] secretStorage {"works":true,"after":"deleted"}
+07:46:14.991 [auto] Checking ghAndAz…
+07:46:15.813 [auto] ghAndAz {"ghWhere":{"ok":true,"code":0,"killed":false,"ms":91,"stdout":"…\\gh.exe","stderr":""},"ghVersion":"gh version 2.102.0 (2026-09-30)","ghAuth":{"code":0,"loggedIn":true,"ms":536},"azWhere":{"ok":false,"code":1,"killed":false,"ms":82,"stdout":"","stderr":"INFO: Could not find files for the given pattern(s)."}}
+07:46:15.815 [auto] Automatic checks done

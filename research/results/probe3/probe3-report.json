@@ -1,0 +1,243 @@
+{
+  "time": "2026-11-20T07:40:51.679Z",
+  "checks": {
+    "gitCli": {
+      "where": {
+        "ok": true,
+        "code": 0,
+        "killed": false,
+        "ms": 98,
+        "stdout": "%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe",
+        "stderr": ""
+      },
+      "version": {
+        "ok": true,
+        "code": 0,
+        "killed": false,
+        "ms": 116,
+        "stdout": "git version 2.51.2.windows.1",
+        "stderr": ""
+      },
+      "insideWorkTree": {
+        "ok": true,
+        "code": 0,
+        "killed": false,
+        "ms": 112,
+        "stdout": "true",
+        "stderr": ""
+      },
+      "topLevelIsProject": {
+        "ok": true,
+        "code": 0,
+        "killed": false,
+        "ms": 112,
+        "stdout": "<redacted>",
+        "stderr": "",
+        "relation": "same as project"
+      },
+      "head": {
+        "ok": true,
+        "isSha": true,
+        "ms": 111,
+        "stderr": ""
+      },
+      "branch": {
+        "ok": true,
+        "present": true,
+        "length": 48,
+        "ms": 114
+      },
+      "origin": {
+        "ok": true,
+        "remote": {
+          "parsed": true,
+          "scheme": "scp-ssh",
+          "host": "bitbucket.org",
+          "kind": "bitbucket",
+          "pathSegments": 2,
+          "hasUserInfo": false,
+          "hasPassword": false
+        },
+        "ms": 119
+      },
+      "remoteCount": 1,
+      "reviewStatus": {
+        "ok": true,
+        "changedFiles": 2,
+        "ms": 117
+      },
+      "reviewIgnored": {
+        "code": 1,
+        "meaning": "not ignored"
+      },
+      "userNameSet": true,
+      "diffQuiet": {
+        "code": 1,
+        "ms": 115,
+        "note": "exit 1 = differences, 0 = none, other = error"
+      },
+      "lastCommitDate": "2026-11-19T08:44:59+01:00",
+      "pathEntriesWithGit": [
+        "C:\\Program Files\\GitHub CLI\\",
+        "%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd"
+      ],
+      "commonInstall": [
+        {
+          "path": "C:\\Program Files\\Git\\cmd\\git.exe",
+          "exists": false
+        },
+        {
+          "path": "%USERPROFILE%\\AppData\\Local\\Programs\\Git\\cmd\\git.exe",
+          "exists": true
+        }
+      ]
+    },
+    "dotGit": {
+      "found": true,
+      "levelsUp": 0,
+      "isFile": false,
+      "head": {
+        "kind": "branch",
+        "refLength": 64
+      },
+      "originFromConfig": {
+        "parsed": true,
+        "scheme": "scp-ssh",
+        "host": "bitbucket.org",
+        "kind": "bitbucket",
+        "pathSegments": 2,
+        "hasUserInfo": false,
+        "hasPassword": false
+      }
+    },
+    "gitExtension": {
+      "gitLike": [],
+      "vscodeGit": false,
+      "scm": "function"
+    },
+    "authentication": {
+      "github": {
+        "available": true,
+        "signedIn": false
+      },
+      "microsoft": {
+        "available": true,
+        "signedIn": false
+      }
+    },
+    "secretStorage": {
+      "works": true,
+      "after": "deleted"
+    },
+    "ghAndAz": {
+      "ghWhere": {
+        "ok": true,
+        "code": 0,
+        "killed": false,
+        "ms": 91,
+        "stdout": "…\\gh.exe",
+        "stderr": ""
+      },
+      "ghVersion": "gh version 2.102.0 (2026-09-30)",
+      "ghAuth": {
+        "code": 0,
+        "loggedIn": true,
+        "ms": 536
+      },
+      "azWhere": {
+        "ok": false,
+        "code": 1,
+        "killed": false,
+        "ms": 82,
+        "stdout": "",
+        "stderr": "INFO: Could not find files for the given pattern(s)."
+      }
+    }
+  },
+  "manual": [
+    {
+      "id": "A",
+      "test": "openExternal: plain https URL (this probe's public repo)",
+      "result": "Worked",
+      "note": "Opened my github with ",
+      "time": "2026-11-20T07:41:32.637Z"
+    },
+    {
+      "id": "A",
+      "test": "openExternal: plain https URL (this probe's public repo)",
+      "result": "Worked",
+      "note": "Opened my github with ",
+      "time": "2026-11-20T07:41:33.757Z"
+    },
+    {
+      "id": "A",
+      "test": "openExternal: plain https URL (this probe's public repo)",
+      "result": "Worked",
+      "note": "Opened my github with bookmarks-review",
+      "time": "2026-11-20T07:41:46.953Z"
+    },
+    {
+      "id": "A",
+      "test": "openExternal: plain https URL (this probe's public repo)",
+      "result": "Worked",
+      "note": "Opened my github with bookmarks-review-studio repo",
+      "time": "2026-11-20T07:42:04.107Z"
+    },
+    {
+      "id": "B",
+      "test": "openExternal: pre-filled GitHub \"new issue\", about 3 KB",
+      "result": "Worked",
+      "note": "",
+      "time": "2026-11-20T07:42:24.453Z"
+    },
+    {
+      "id": "C",
+      "test": "openExternal: pre-filled GitHub \"new issue\", about 12 KB",
+      "result": "Error",
+      "note": "",
+      "time": "2026-11-20T07:43:03.134Z"
+    },
+    {
+      "id": "D",
+      "test": "Link in the panel (<a href>) to the public repo",
+      "result": "Worked",
+      "note": "Opened my github with bookmarks-review-studio repo",
+      "time": "2026-11-20T07:43:41.803Z"
+    },
+    {
+      "id": "E",
+      "test": "PowerShell Start-Process with the pre-filled 3 KB URL",
+      "result": "Worked",
+      "note": "Pre-filled issue opened for creation. I have submitted the issue.",
+      "time": "2026-11-20T07:44:11.368Z"
+    },
+    {
+      "id": "F",
+      "test": "openExternal: pre-filled \"new issue\" on THIS project's remote",
+      "result": "Nothing happened",
+      "note": "",
+      "time": "2026-11-20T07:44:40.140Z"
+    },
+    {
+      "id": "H",
+      "test": "Commit dialog: does Studio list .review/probe3/ files? (Do not commit)",
+      "result": "Worked",
+      "note": "",
+      "time": "2026-11-20T07:45:30.061Z"
+    },
+    {
+      "id": "G",
+      "test": "Clipboard: copy a sample review summary, then paste it in Notepad or below",
+      "result": "Worked",
+      "note": "",
+      "time": "2026-11-20T07:45:58.979Z"
+    }
+  ],
+  "host": {
+    "appName": "Visual Studio Code",
+    "apiVersion": "1.95.0",
+    "uriScheme": "vscode",
+    "node": "v24.22.2",
+    "platform": "win32"
+  }
+}
